@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clock In/Out App</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h1 class="welcome-text">
+        <span class="welcome-highlight">Welcome,</span> Jack
+      </h1>
+      <p class="role-text">UI/UX Intern</p>
+    </div>
+
+    <!-- Time Display -->
+    <div class="time-display">
+      <h2 class="current-time" id="currentTime">09:30</h2>
+      <p class="current-date" id="currentDate">Monday, January 22</p>
+    </div>
+
+    <!-- Clock Button -->
+    <div class="clock-button-container">
+      <div class="pulse-ring pulse-ring-1"></div>
+      <div class="pulse-ring pulse-ring-2"></div>
+      <button class="clock-button" id="clockButton" onclick="handleClockAction()">
+        <div class="clock-button-content">
+          <svg class="clock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12,6 12,12 16,14"></polyline>
+          </svg>
+          <span class="clock-text" id="clockText">Clock In</span>
+        </div>
+      </button>
+    </div>
+
+    <!-- Location Status -->
+    <div class="location-status">
+      <svg class="location-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+        <circle cx="12" cy="10" r="3"></circle>
+      </svg>
+      <span class="location-text">You're near the office</span>
+    </div>
+
+    <!-- Swipe Hint -->
+    <p class="swipe-hint" id="swipeHint">Tap the button to Clock In</p>
+
+    <!-- Time Stats -->
+    <div class="stats-container">
+      <div class="stat-card">
+        <div class="stat-icon-wrapper blue">
+          <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12,6 12,12 16,14"></polyline>
+          </svg>
+        </div>
+        <div class="stat-info">
+          <span class="stat-label">Working Hours</span>
+          <span class="stat-value" id="workingHours">00:00</span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon-wrapper orange">
+          <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 18a5 5 0 0 0-10 0"></path>
+            <line x1="12" y1="9" x2="12" y2="2"></line>
+            <line x1="4.22" y1="10.22" x2="5.64" y2="11.64"></line>
+            <line x1="1" y1="18" x2="3" y2="18"></line>
+            <line x1="21" y1="18" x2="23" y2="18"></line>
+            <line x1="18.36" y1="11.64" x2="19.78" y2="10.22"></line>
+            <line x1="23" y1="22" x2="1" y2="22"></line>
+            <polyline points="8,6 12,2 16,6"></polyline>
+          </svg>
+        </div>
+        <div class="stat-info">
+          <span class="stat-label">Break Time</span>
+          <span class="stat-value">00:00</span>
+        </div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon-wrapper green">
+          <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23,6 13.5,15.5 8.5,10.5 1,18"></polyline>
+            <polyline points="17,6 23,6 23,12"></polyline>
+          </svg>
+        </div>
+        <div class="stat-info">
+          <span class="stat-label">Overtime</span>
+          <span class="stat-value">00:00</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Modal -->
+  <div class="modal-overlay" id="confirmModal">
+    <div class="modal-content">
+      <div class="modal-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <polyline points="12,6 12,12 16,14"></polyline>
+        </svg>
+      </div>
+      <h3 class="modal-title">Clock Out?</h3>
+      <p class="modal-subtitle">You've worked for</p>
+      <p class="modal-time" id="modalTime">00:00</p>
+      <div class="modal-buttons">
+        <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
+        <button class="modal-btn confirm" onclick="confirmClockOut()">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Status Notification -->
+  <div class="notification" id="notification">
+    <div class="notification-content">
+      <div class="notification-icon" id="notificationIcon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="20,6 9,17 4,12"></polyline>
+        </svg>
+      </div>
+      <div class="notification-text">
+        <span class="notification-title" id="notificationTitle">On Time!</span>
+        <span class="notification-time" id="notificationTime">Clocked in at 09:30</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
+

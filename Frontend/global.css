@@ -1,0 +1,124 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    --background: 30 50% 97%;
+    --foreground: 25 30% 20%;
+
+    --card: 30 40% 95%;
+    --card-foreground: 25 30% 20%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 25 30% 20%;
+
+    --primary: 30 55% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 30 30% 90%;
+    --secondary-foreground: 25 30% 25%;
+
+    --muted: 30 20% 92%;
+    --muted-foreground: 25 15% 50%;
+
+    --accent: 30 45% 85%;
+    --accent-foreground: 25 30% 20%;
+
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 145 60% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 35 95% 55%;
+    --warning-foreground: 0 0% 100%;
+
+    --clock-in: 35 90% 55%;
+    --clock-out: 0 75% 55%;
+
+    --border: 30 25% 88%;
+    --input: 30 25% 88%;
+    --ring: 30 55% 55%;
+
+    --radius: 1rem;
+  }
+}
+
+/* Custom animations */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.4s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.3s ease-out forwards;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
