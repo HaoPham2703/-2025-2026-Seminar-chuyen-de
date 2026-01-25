@@ -1,13 +1,16 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Home, Calendar, Bell, Folder, Settings } from 'lucide-react-native';
 
 import { CustomTabButton } from '@/components/custom-tab-button';
+import NotificationBadge from '@/src/components/NotificationBadge';
+import { useNotifications } from '@/src/contexts/NotificationContext';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const { unreadCount } = useNotifications();
   
   return (
     <Tabs
@@ -56,11 +59,16 @@ export default function TabLayout() {
         options={{
           title: 'Updates',
           tabBarIcon: ({ color, focused }) => (
-            <Bell 
-              size={24} 
-              color={focused ? 'hsl(25, 30%, 20%)' : 'hsl(25, 15%, 50%)'} 
-              strokeWidth={focused ? 2.5 : 2}
-            />
+            <View style={{ position: 'relative' }}>
+              <Bell 
+                size={24} 
+                color={focused ? 'hsl(25, 30%, 20%)' : 'hsl(25, 15%, 50%)'} 
+                strokeWidth={focused ? 2.5 : 2}
+              />
+              <View style={{ position: 'absolute', top: -4, right: -4 }}>
+                <NotificationBadge count={unreadCount} size={16} />
+              </View>
+            </View>
           ),
         }}
       />

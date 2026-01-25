@@ -73,6 +73,17 @@ db.reports.createIndex({ tenantId: 1, type: 1, startDate: -1 });
 db.reports.createIndex({ tenantId: 1, createdBy: 1 });
 print("✓ Reports indexes created");
 
+// ============================================
+// NOTIFICATIONS INDEXES
+// ============================================
+print("Creating Notifications indexes...");
+db.notifications.createIndex({ tenantId: 1, sentAt: -1 });
+db.notifications.createIndex({ tenantId: 1, senderId: 1, sentAt: -1 });
+db.notifications.createIndex({ tenantId: 1, "recipients.employeeId": 1, sentAt: -1 });
+db.notifications.createIndex({ tenantId: 1, "recipients.userId": 1, "recipients.read": 1 });
+db.notifications.createIndex({ tenantId: 1, type: 1, sentAt: -1 });
+print("✓ Notifications indexes created");
+
 print("\\n✅ All indexes created successfully!");
 `;
 

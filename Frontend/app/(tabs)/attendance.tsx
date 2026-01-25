@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { FadeScreenWrapper } from '@/components/fade-screen-wrapper';
 import Svg, { Circle } from 'react-native-svg';
+import { useFocusEffect } from 'expo-router';
+import { RefreshableScrollView } from '@/components/refreshable-scroll-view';
+import { useTabReload } from '@/hooks/use-tab-reload';
 import {
   ChevronDown,
   MoreVertical,
@@ -432,7 +435,7 @@ export default function AttendanceScreen() {
   const [employeeId, setEmployeeId] = useState<string>("");
   const [isLoadingEmployeeId, setIsLoadingEmployeeId] = useState(false);
 
-  const monthScrollViewRef = useRef<ScrollView>(null);
+  const monthScrollViewRef = useRef<any>(null);
 
   // Load employee ID on mount
   useEffect(() => {
@@ -466,6 +469,25 @@ export default function AttendanceScreen() {
       loadAttendanceData();
     }
   }, [selectedYear, selectedMonth, employeeId]);
+
+  // Register reload function for tab double press
+  const handleReload = useCallback(async () => {
+    if (employeeId) {
+      await loadAttendanceData();
+    }
+  }, [employeeId, selectedYear, selectedMonth]);
+
+  const { scrollViewRef } = useTabReload(handleReload, 'attendance');
+
+  // Refresh when screen is focused (so user doesn't need manual reload)
+  useFocusEffect(
+    React.useCallback(() => {
+      if (employeeId) {
+        loadAttendanceData();
+      }
+      return () => {};
+    }, [employeeId, selectedYear, selectedMonth])
+  );
 
   const loadEmployeeId = async () => {
     try {
@@ -612,8 +634,10 @@ export default function AttendanceScreen() {
   };
 
   const formatHoursFromMinutes = (minutes: number): string => {
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
+    // Defensive: never display negative durations
+    const safeMinutes = Math.max(0, minutes || 0);
+    const hours = Math.floor(safeMinutes / 60);
+    const mins = safeMinutes % 60;
     return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
   };
 
@@ -662,10 +686,11 @@ export default function AttendanceScreen() {
   return (
     <FadeScreenWrapper>
       <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView
+      <RefreshableScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        onRefresh={handleReload}
       >
         {/* Header */}
         <View style={styles.header}>
@@ -848,7 +873,7 @@ export default function AttendanceScreen() {
             ))
           )}
         </Animated.View>
-      </ScrollView>
+      </RefreshableScrollView>
 
       {/* Year Picker Modal */}
       <YearPickerModal

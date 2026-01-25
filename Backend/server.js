@@ -1,19 +1,26 @@
 import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
+import { createServer } from 'http';
 import { connectDatabase } from './config/database.js';
+import { initializeSocketIO } from './config/socket.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 
 // Routes
 import attendanceRoutes from './routes/attendance.js';
 import authRoutes from './routes/auth.js';
 import employeesRoutes from './routes/employees.js';
+import notificationRoutes from './routes/notifications.js';
 
 // Load environment variables
 dotenv.config();
 
 const app = express();
+const httpServer = createServer(app);
 const PORT = process.env.PORT || 3000;
+
+// Initialize Socket.IO
+initializeSocketIO(httpServer);
 
 // Middleware
 app.use(cors({
@@ -71,6 +78,7 @@ app.get('/api', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/employees', employeesRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // 404 handler
 app.use(notFoundHandler);
@@ -78,17 +86,19 @@ app.use(notFoundHandler);
 // Error handler
 app.use(errorHandler);
 
+
 // Start server
 async function startServer() {
   try {
     // Connect to MongoDB
     await connectDatabase();
     
-    // Start Express server
-    app.listen(PORT, () => {
+    // Start HTTP server (with Socket.IO)
+    httpServer.listen(PORT, () => {
       console.log(`🚀 Server is running on port ${PORT}`);
       console.log(`📡 API endpoint: http://localhost:${PORT}/api`);
       console.log(`🏥 Health check: http://localhost:${PORT}/health`);
+      console.log(`🔌 Socket.IO server ready`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);

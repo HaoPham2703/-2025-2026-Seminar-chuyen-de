@@ -7,6 +7,10 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "update-ip": "node scripts/update-ip.js",
+    "assign-employee-qrcodes": "node scripts/assign-employee-qrcodes.js",
+    "create-admin": "node scripts/create-admin.js",
+    "check-employees": "node scripts/check-employees.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -24,7 +28,8 @@
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.3.1",
     "cors": "^2.8.5",
-    "express-validator": "^7.0.1"
+    "express-validator": "^7.0.1",
+    "socket.io": "^4.7.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

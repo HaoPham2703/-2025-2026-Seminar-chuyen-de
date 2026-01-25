@@ -92,7 +92,13 @@ Tạo file `.env` trong folder `Frontend/` (nếu cần thay đổi API URL):
 EXPO_PUBLIC_API_URL=http://localhost:3000/api
 ```
 
-**Lưu ý:** Mặc định API URL là `http://localhost:3000/api` (xem `Frontend/src/services/api.ts`)
+**Lưu ý quan trọng (Clock In/Out hay bị fail do sai IP):**
+- **Điện thoại thật (Expo Go)**: phải dùng **LAN IP của máy chạy Backend** (ipconfig). Ví dụ của bạn:
+  - `EXPO_PUBLIC_API_URL=http://172.20.10.4:3000/api`
+- **Android Emulator**: nên dùng `http://10.0.2.2:3000/api` (app đã fallback tự động nếu không set env)
+- **Web**: dùng `http://localhost:3000/api`
+
+API base URL được resolve trong `Frontend/src/services/api.ts`.
 
 ### 2.3. Chạy Frontend
 

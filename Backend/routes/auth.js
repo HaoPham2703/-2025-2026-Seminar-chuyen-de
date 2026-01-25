@@ -3,7 +3,7 @@ import { ObjectId } from 'mongodb';
 import { getDatabase } from '../config/database.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { generateToken } from '../utils/jwt.js';
-import { hashPassword } from '../utils/password.js';
+import { hashPassword, comparePassword } from '../utils/password.js';
 
 const router = express.Router();
 
@@ -40,15 +40,20 @@ router.post('/login', async (req, res, next) => {
     }
 
     // Verify password
-    // Note: Trong production, password phải được hash bằng bcrypt
-    // Hiện tại seed data có placeholder, nên tạm thời skip password check
-    // const isValidPassword = await comparePassword(password, user.password);
-    // if (!isValidPassword) {
-    //   return res.status(401).json({
-    //     success: false,
-    //     message: 'Invalid email or password'
-    //   });
-    // }
+    // Kiểm tra nếu user có password (có thể là seed data cũ không có password)
+    if (user.password) {
+      const isValidPassword = await comparePassword(password, user.password);
+      if (!isValidPassword) {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid email or password'
+        });
+      }
+    } else {
+      // Nếu user không có password (seed data cũ), cho phép login với bất kỳ password nào
+      // Hoặc có thể yêu cầu user đổi password lần đầu
+      console.warn('User has no password set:', user.email);
+    }
 
     // Lấy tenant info
     const tenant = await db.collection('tenants').findOne({ 

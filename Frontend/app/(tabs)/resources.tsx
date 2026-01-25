@@ -1,13 +1,27 @@
+import React, { useCallback } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { FadeScreenWrapper } from '@/components/fade-screen-wrapper';
+import { RefreshableScrollView } from '@/components/refreshable-scroll-view';
+import { useTabReload } from '@/hooks/use-tab-reload';
 
 export default function ResourcesScreen() {
+  const handleReload = useCallback(async () => {
+    // Reload logic nếu có
+    console.log('Reloading resources...');
+  }, []);
+
+  const { scrollViewRef } = useTabReload(handleReload, 'resources');
+
   return (
     <FadeScreenWrapper>
-      <View style={styles.container}>
+      <RefreshableScrollView
+        ref={scrollViewRef}
+        contentContainerStyle={styles.container}
+        onRefresh={handleReload}
+      >
         <Text style={styles.title}>Resources</Text>
         <Text style={styles.subtitle}>Coming soon...</Text>
-      </View>
+      </RefreshableScrollView>
     </FadeScreenWrapper>
   );
 }

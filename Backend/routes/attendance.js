@@ -1,14 +1,32 @@
 import express from 'express';
 import { ObjectId } from 'mongodb';
+import { ATTENDANCE_STATUS } from '../config/constants.js';
 import { getDatabase } from '../config/database.js';
 import { authenticateToken, tenantIsolation } from '../middleware/auth.js';
-import { ATTENDANCE_STATUS } from '../config/constants.js';
 
 const router = express.Router();
 
 // Tất cả routes đều cần authentication
 router.use(authenticateToken);
 router.use(tenantIsolation);
+
+/**
+ * Ensure numeric durations are never negative in responses.
+ */
+function sanitizeAttendanceRecord(record) {
+  if (!record) return record;
+  const sanitized = { ...record };
+  if (typeof sanitized.workDuration === 'number' && sanitized.workDuration < 0) {
+    sanitized.workDuration = 0;
+  }
+  if (typeof sanitized.overtimeDuration === 'number' && sanitized.overtimeDuration < 0) {
+    sanitized.overtimeDuration = 0;
+  }
+  if (typeof sanitized.breakDuration === 'number' && sanitized.breakDuration < 0) {
+    sanitized.breakDuration = 0;
+  }
+  return sanitized;
+}
 
 /**
  * POST /api/attendance/clock-in
@@ -55,17 +73,23 @@ router.post('/clock-in', async (req, res, next) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Kiểm tra đã chấm công chưa
-    const existingAttendance = await db.collection('attendance').findOne({
-      tenantId: tenantObjectId,
-      employeeId: employeeObjectId,
-      date: today
-    });
+    // Lấy bản ghi chấm công mới nhất trong ngày hôm nay
+    const existingAttendance = await db.collection('attendance').findOne(
+      {
+        tenantId: tenantObjectId,
+        employeeId: employeeObjectId,
+        date: today
+      },
+      {
+        sort: { createdAt: -1 }
+      }
+    );
 
-    if (existingAttendance && existingAttendance.clockIn) {
+    // Nếu bản ghi mới nhất đã clock-in nhưng chưa clock-out thì không cho chấm lần nữa
+    if (existingAttendance && existingAttendance.clockIn && !existingAttendance.clockOut) {
       return res.status(400).json({
         success: false,
-        message: 'Already clocked in today'
+        message: 'Already clocked in and not yet clocked out'
       });
     }
 
@@ -91,7 +115,7 @@ router.post('/clock-in', async (req, res, next) => {
       ? Math.floor((clockInTime - expectedStartTime) / 60000)
       : 0;
 
-    // Tạo hoặc cập nhật attendance record
+    // Tạo attendance record mới cho mỗi lần clock-in
     const attendanceData = {
       tenantId: tenantObjectId,
       employeeId: employeeObjectId,
@@ -118,17 +142,8 @@ router.post('/clock-in', async (req, res, next) => {
       createdAt: clockInTime,
       updatedAt: clockInTime
     };
-
-    if (existingAttendance) {
-      // Update existing record
-      await db.collection('attendance').updateOne(
-        { _id: existingAttendance._id },
-        { $set: attendanceData }
-      );
-    } else {
-      // Insert new record
-      await db.collection('attendance').insertOne(attendanceData);
-    }
+    // Luôn insert bản ghi mới (hỗ trợ nhiều ca trong một ngày)
+    await db.collection('attendance').insertOne(attendanceData);
 
     res.json({
       success: true,
@@ -169,11 +184,16 @@ router.post('/clock-out', async (req, res, next) => {
     today.setHours(0, 0, 0, 0);
 
     // Tìm attendance record hôm nay
-    const attendance = await db.collection('attendance').findOne({
-      tenantId: tenantObjectId,
-      employeeId: employeeObjectId,
-      date: today
-    });
+    const attendance = await db.collection('attendance').findOne(
+      {
+        tenantId: tenantObjectId,
+        employeeId: employeeObjectId,
+        date: today
+      },
+      {
+        sort: { createdAt: -1 }
+      }
+    );
 
     if (!attendance || !attendance.clockIn) {
       return res.status(400).json({
@@ -195,7 +215,8 @@ router.post('/clock-out', async (req, res, next) => {
     // Tính work duration (minutes)
     const workDurationMinutes = Math.floor((clockOutTime - clockInTime) / 60000);
     const breakDuration = attendance.breakDuration || 60;
-    const netWorkMinutes = workDurationMinutes - breakDuration;
+    // Nếu clock-out sớm (chưa đủ thời gian nghỉ) thì không để tổng giờ âm
+    const netWorkMinutes = Math.max(0, workDurationMinutes - breakDuration);
 
     // Lấy tenant settings để tính overtime
     const tenant = await db.collection('tenants').findOne({
@@ -262,18 +283,24 @@ router.get('/current', async (req, res, next) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const attendance = await db.collection('attendance').findOne({
-      tenantId: tenantObjectId,
-      employeeId: employeeObjectId,
-      date: today
-    });
+    const attendance = await db.collection('attendance').findOne(
+      {
+        tenantId: tenantObjectId,
+        employeeId: employeeObjectId,
+        date: today
+      },
+      {
+        sort: { createdAt: -1 }
+      }
+    );
+    const safeAttendance = sanitizeAttendanceRecord(attendance || null);
 
     res.json({
       success: true,
       data: {
-        attendance: attendance || null,
-        isClockedIn: attendance && attendance.clockIn ? true : false,
-        isClockedOut: attendance && attendance.clockOut ? true : false
+        attendance: safeAttendance,
+        isClockedIn: safeAttendance && safeAttendance.clockIn ? true : false,
+        isClockedOut: safeAttendance && safeAttendance.clockOut ? true : false
       }
     });
   } catch (error) {
@@ -322,11 +349,13 @@ router.get('/history', async (req, res, next) => {
       .limit(parseInt(limit))
       .toArray();
 
+    const sanitizedRecords = attendanceRecords.map(sanitizeAttendanceRecord);
+
     res.json({
       success: true,
       data: {
-        records: attendanceRecords,
-        total: attendanceRecords.length
+        records: sanitizedRecords,
+        total: sanitizedRecords.length
       }
     });
   } catch (error) {

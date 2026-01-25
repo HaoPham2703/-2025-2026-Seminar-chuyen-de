@@ -35,6 +35,8 @@
 - Components được tổ chức trong `src/components/` cho business logic
 - Shared components trong `components/` cho reusable UI
 - API services trong `src/services/`
+- Contexts trong `src/contexts/` cho app-wide state management
+- Utilities trong `src/utils/` cho validation, animations, i18n
 - Sử dụng TypeScript cho type safety
 
 ## You have learned in the past
@@ -62,6 +64,25 @@
   - iOS Simulator: dùng IP thực tế của máy
   - Web: có thể dùng `localhost`
   - Cấu hình CORS trong Backend để cho phép nhiều origin
+
+### Bug 7: Clock In không hoạt động do API base URL hardcode sai IP
+- **Error description**: Bấm Clock In không chạy / báo Network request failed (mobile/emulator)
+- **Root cause**: `Frontend/src/services/api.ts` hardcode `http://192.168.1.6:3000/api` không đúng máy hiện tại
+- **Solution**:
+  - Ưu tiên cấu hình `.env` qua `EXPO_PUBLIC_API_URL`
+  - Android emulator dùng `http://10.0.2.2:3000/api`
+  - Có thể auto-detect IP từ Expo `hostUri` (khi dev)
+  - Fallback có warning rõ ràng để tránh “bấm không được” mà không biết lý do
+
+### Bug 8: Tổng giờ hiển thị âm sau clock-out nhanh (ví dụ `-1:-58`)
+- **Error description**: Clock-in và clock-out cách nhau vài phút, mục “Giờ/Tổng giờ” hiển thị giá trị âm như `-1:-58`.
+- **Root cause**: Backend tính `netWorkMinutes = workDurationMinutes - breakDuration` với `breakDuration` mặc định 60 phút → nếu làm < 60 phút thì ra số âm.
+- **Solution**: Clamp về 0 trước khi lưu/trả về: `Math.max(0, workDurationMinutes - breakDuration)`.
+
+### Lesson 11: Gán QR Code cho toàn bộ nhân viên
+- **Pattern**: Tạo script Node.js trong `Backend/scripts/assign-employee-qrcodes.js` sử dụng `connectDatabase()` / `getDatabase()` để cập nhật batch.
+- **Quy ước mã**: `EMP-<employeeId || _id>`, chỉ gán cho employee chưa có `qrCode.code` (không ghi đè).
+- **Cách chạy**: `cd Backend && npm run assign-employee-qrcodes`.
 
 ### Bug 4: Package Version Conflicts
 - **Error description**: `ERESOLVE could not resolve` khi cài dependencies
@@ -102,13 +123,15 @@
   - `Frontend/` - Tất cả code React Native + Expo
   - `Backend/` - Tất cả code Node.js + Express
 - **Components**: 
-  - `src/components/` - Business logic components
+  - `src/components/` - Business logic components (Profile, EditProfileModal, SettingsScreen)
   - `components/` - Shared UI components
+- **Contexts**: `src/contexts/` - React Contexts cho app-wide state (SettingsContext)
 - **Services**: `src/services/` - API service layer
+- **Utils**: `src/utils/` - Utility functions (validation, animations, i18n)
+- **Scripts**: `Backend/scripts/` - Utility scripts (update-ip, assign-employee-qrcodes)
 - **Documentation**: 
   - `database-design.md` - Database design documentation
   - `README.md` - Hướng dẫn chạy project
-  - `QUICK-START.md` - Quick start guide
   - `scratchpad.md` - Task tracking và lessons learned
 
 ### Lesson 5: React Native với Expo
@@ -212,6 +235,199 @@
   - Thêm validation cho ObjectId format trước khi convert
   - Thêm logging chi tiết trong auth middleware để debug
 
+### Bug 10: Notification Modal không hiện lại khi quay lại tab
+- **Error description**: Khi đọc notification ở tab Updates, sau đó chuyển tab và quay lại, popup không hiện nữa mặc dù vẫn có thông báo chưa đọc
+- **Root cause**: 
+  - Updates tab sử dụng `NotificationCenter` như một Modal với state `showNotifications`
+  - Khi user đóng modal (set `showNotifications = false`), state này được lưu
+  - Khi quay lại tab, modal không tự động mở lại vì state vẫn là `false`
+- **Solution**: 
+  - Sửa Updates tab để hiển thị notifications trực tiếp như một danh sách, không dùng Modal
+  - Layout tương tự Home và Attendance: header với title, unread badge, action buttons, danh sách notifications
+  - Sử dụng `useFocusEffect` để auto-refresh khi vào tab
+  - NotificationCenter component vẫn giữ Modal version để có thể dùng cho popup ở nơi khác nếu cần
+
+### Bug 11: Notification vẫn hiển thị "chưa đọc" sau khi mark as read
+- **Error description**: Khi bấm vào notification để xem chi tiết, badge "chưa đọc" vẫn hiển thị mặc dù đã mark as read
+- **Root cause**: 
+  - Notification có nhiều recipients, mỗi recipient có trạng thái `read` riêng trong `recipients` array
+  - Backend cập nhật đúng `recipients[].read = true` cho employee hiện tại
+  - Frontend không refresh notifications từ server sau khi mark as read, chỉ cập nhật local state
+  - Local state không sync với database
+  - Backend query có thể trả về notification với `read: true` do race condition hoặc query không đúng
+- **Solution**: 
+  - Sửa `markNotificationAsRead` và `markAllNotificationsAsRead` để gọi `refreshNotifications()` sau khi mark as read
+  - Bỏ cập nhật local state thủ công, dùng data từ server sau khi refresh
+  - `refreshNotifications()` tự động cập nhật cả `notifications` và `unreadCount` từ response
+  - Notification Detail Page sync local state với notifications array từ context khi array thay đổi
+  - Sửa backend query để hỗ trợ filter theo `unreadOnly=true/false`
+  - Tính `unreadCount` từ database (tất cả notifications) thay vì từ response để đảm bảo chính xác
+  - Thêm logging chi tiết để debug query và response
+
+### Bug 12: Notification unreadCount không chính xác sau khi mark all as read
+- **Error description**: Sau khi bấm "Đọc tất cả", badge vẫn hiển thị số lượng unread (ví dụ "2/2 chưa đọc") mặc dù tất cả notifications đã được mark as read
+- **Root cause**: 
+  - Backend tính `unreadCount` từ query riêng (database) nhưng có thể không đồng bộ với notifications trong response
+  - Có thể có notifications khác trong database chưa đọc nhưng không có trong response (do pagination)
+  - Logic tính `unreadCount` không nhất quán giữa query và response
+- **Solution**: 
+  - Tính `unreadCount` từ database (tất cả notifications) thay vì từ response để đảm bảo chính xác
+  - Query database để đếm tất cả notifications có `recipients[].read: false` cho employee hiện tại
+  - Đảm bảo `unreadCount` luôn phản ánh đúng số lượng unread trong database
+  - Thêm logging để debug và so sánh `unreadCount` từ database và response
+
+### Bug 9: Phải đổi IP trong .env mỗi khi đổi mạng
+- **Error description**: Mỗi khi đổi mạng (WiFi khác, mobile hotspot), phải thủ công cập nhật IP trong file `.env`
+- **Root cause**: 
+  - IP address trong `EXPO_PUBLIC_API_URL` bị hardcode trong `.env`
+  - Khi đổi mạng, IP address của máy thay đổi nhưng `.env` không tự động cập nhật
+- **Solution**: 
+  - Tạo script `Backend/scripts/update-ip.js` để tự động detect IP từ network interfaces
+  - Script tự động tìm IPv4 address phù hợp (ưu tiên WiFi/Ethernet, loại bỏ loopback)
+  - Tự động cập nhật `EXPO_PUBLIC_API_URL` trong file `.env`
+  - Thêm npm script `npm run update-ip` để chạy dễ dàng
+  - **Cách sử dụng**: Mỗi khi đổi mạng, chạy `cd Backend && npm run update-ip` để tự động cập nhật IP
+
+### Lesson 12: Form Validation với Regex và Error Messages
+- **Pattern**: Tạo validation utilities với regex patterns cho email, password, phone, name
+- **File**: `Frontend/src/utils/validation.ts`
+- **Features**:
+  - Email validation: `/^[^\s@]+@[^\s@]+\.[^\s@]+$/`
+  - Password validation: min 8 chars, uppercase, lowercase, number
+  - Phone validation: Vietnamese format `(0|\+84)[0-9]{9,10}`
+  - Name validation: Vietnamese names with accents, 2-50 chars
+- **Error Display**: 
+  - Hiển thị error messages màu đỏ dưới input
+  - Tự động clear error khi user sửa
+  - Validate on blur (khi rời khỏi input)
+- **Best Practice**: Tách validation logic ra utility file để reuse
+
+### Lesson 13: Animation Utilities với react-native-reanimated
+- **Pattern**: Tạo reusable animation hooks trong `Frontend/src/utils/animations.ts`
+- **Animations**:
+  - `useShakeAnimation()`: Shake input khi có lỗi (translateX sequence)
+  - `useFadeInAnimation(isVisible)`: Fade in error messages với translateY
+  - `useSlideUpAnimation(delay)`: Slide up form elements với delay
+  - `usePulseAnimation()`: Pulse animation cho logo
+  - `useButtonPressAnimation()`: Scale animation cho buttons khi press
+- **Implementation**: 
+  - Sử dụng `useSharedValue` và `useAnimatedStyle` từ react-native-reanimated
+  - Delay animation với `useEffect` và `setTimeout` (cleanup properly)
+  - Tất cả animations dùng `useNativeDriver: true` cho performance
+
+### Lesson 14: Profile Screen với Load Data từ API
+- **Pattern**: Load employee profile data từ API như Home screen
+- **Implementation**:
+  - Sử dụng `getEmployeeProfile()` từ `employeeService`
+  - Load data trong `useEffect` khi component mount
+  - Hiển thị loading state với `ActivityIndicator`
+  - Error handling với user-friendly messages
+  - Display: fullName, email, role, employeeId, statistics từ database
+- **Statistics**: Hiển thị thống kê thực từ database (totalWorkingDays, totalHours, onTimeRate)
+
+### Lesson 15: Edit Profile Modal với Validation
+- **Pattern**: Modal component để edit profile với form validation
+- **File**: `Frontend/src/components/EditProfileModal.tsx`
+- **Features**:
+  - Form với các trường: firstName, lastName, phone, dateOfBirth, gender, address, emergencyContact
+  - Validation với regex (firstName, lastName, phone)
+  - Shake animation khi validation fail
+  - Fade in error messages
+  - Loading state khi save
+- **API**: `PUT /api/employees/profile` để update profile
+- **Backend**: Cập nhật nested fields trong MongoDB với dot notation (`personalInfo.firstName`)
+
+### Lesson 16: Settings Screen với Context API
+- **Pattern**: Sử dụng React Context để quản lý app-wide settings
+- **Files**: 
+  - `Frontend/src/contexts/SettingsContext.tsx` - Settings provider
+  - `Frontend/src/components/SettingsScreen.tsx` - Settings UI
+- **Settings**:
+  - **Notifications**: enabled, clockInReminder, attendanceSummary
+  - **Theme**: light, dark, auto (theo system)
+  - **Language**: vi, en
+  - **Privacy**: showEmail, showPhone
+- **Storage**: Lưu vào AsyncStorage với key `@dacn_app_settings`
+- **Auto-apply**: Settings được áp dụng tự động khi thay đổi
+
+### Lesson 18: Real-time Notifications với Socket.IO
+- **Pattern**: WebSocket/Socket.IO cho real-time notifications từ admin đến employees
+- **Backend**:
+  - Socket.IO server với JWT authentication middleware
+  - Notification routes: send (admin), get, mark as read, delete
+  - Database schema: notifications collection với recipients array
+  - Real-time emit: `io.to('user:userId').emit('new_notification', data)`
+- **Frontend**:
+  - NotificationContext với Socket.IO client connection
+  - Auto-connect khi có auth token
+  - Listen event `new_notification` và auto-refresh
+  - NotificationCenter, NotificationItem, NotificationBadge components
+- **Integration**:
+  - NotificationBadge hiển thị trên Profile screen và tab navigation
+  - Updates tab hiển thị notifications trực tiếp (không dùng Modal)
+- **UI Pattern**:
+  - Updates tab (`Frontend/app/(tabs)/updates.tsx`) hiển thị notifications như một danh sách trực tiếp
+  - Không dùng Modal để tránh vấn đề: khi đóng modal, quay lại tab thì không hiện nữa
+  - Layout tương tự Home và Attendance: header với title, unread badge, action buttons, danh sách notifications
+  - Sử dụng `useFocusEffect` để auto-refresh khi vào tab
+  - Khi bấm vào notification, navigate đến trang chi tiết (`/notification/[id]`)
+  - **Pull-to-refresh**: Thêm `RefreshControl` vào ScrollView để kéo từ trên xuống reload notifications
+- **Notification Detail Page**:
+  - Tạo trang chi tiết notification tại `Frontend/app/notification/[id].tsx`
+  - Hiển thị đầy đủ thông tin: icon, type, priority, title, message, metadata, timestamps
+  - Tự động đánh dấu đã đọc khi mở trang chi tiết
+  - Có nút xóa notification
+  - Sử dụng dynamic route với `[id]` trong Expo Router
+  - Cần thêm route vào Stack trong `_layout.tsx`
+  - Giao diện được cải thiện: background trắng, icon lớn hơn với shadow, badges đẹp hơn, card layout
+- **Two-Tab System (Chưa đọc / Đã đọc)**:
+  - Updates tab có 2 tab: "Chưa đọc" (mặc định) và "Đã đọc"
+  - Mỗi tab query notifications khác nhau:
+    - Tab "Chưa đọc": query với `unreadOnly=true` (chỉ lấy notifications có `read: false`)
+    - Tab "Đã đọc": query với `unreadOnly=false` và filter `read: true` ở frontend
+  - State management: `activeTab` state để track tab hiện tại
+  - Auto-refresh khi chuyển tab
+  - Badge hiển thị số lượng unread chỉ ở tab "Chưa đọc"
+  - Nút "Đọc tất cả" chỉ hiển thị ở tab "Chưa đọc"
+- **Read Status Management**:
+  - **KHÔNG xóa recipient** khi mark as read, chỉ cập nhật `read: true` và `readAt`
+  - Recipient vẫn tồn tại trong array `recipients`, chỉ thay đổi trạng thái `read`
+  - Notification vẫn tồn tại cho tất cả recipients, mỗi recipient có trạng thái `read` riêng
+  - Backend query hỗ trợ filter theo `unreadOnly=true/false` để lấy notifications chưa đọc hoặc tất cả
+  - `unreadCount` được tính từ database (tất cả notifications, không chỉ trong response)
+- **Data Sync Pattern**:
+  - Sau khi mark as read (single hoặc all), phải gọi `refreshNotifications()` để lấy data mới từ server
+  - Không cập nhật local state thủ công, dùng data từ server để đảm bảo sync với database
+  - `refreshNotifications()` tự động cập nhật cả `notifications` array và `unreadCount` từ response
+  - Notification Detail Page sync local state với notifications array từ context khi array thay đổi
+  - `refreshNotifications()` nhận parameter `unreadOnly?: boolean` để query theo tab
+- **Files**:
+  - `Backend/config/socket.js` - Socket.IO initialization
+  - `Backend/routes/notifications.js` - Notification API routes với query support `unreadOnly`
+  - `Frontend/src/contexts/NotificationContext.tsx` - Socket.IO client và state, `refreshNotifications(unreadOnly?)`
+  - `Frontend/src/services/notificationService.ts` - API service với `unreadOnly` parameter
+  - `Frontend/src/components/NotificationCenter.tsx` - Notification list UI (Modal version, có thể dùng cho popup)
+  - `Frontend/src/components/NotificationItem.tsx` - Single notification item
+  - `Frontend/src/components/NotificationBadge.tsx` - Unread count badge
+  - `Frontend/app/(tabs)/updates.tsx` - Updates tab với 2 tabs (Chưa đọc/Đã đọc), pull-to-refresh
+  - `Frontend/app/notification/[id].tsx` - Notification detail page với dynamic route
+
+### Lesson 17: Settings Context và App-wide State Management
+- **Pattern**: Context API cho app-wide state management
+- **Implementation**:
+  - `SettingsProvider` wrap toàn bộ app trong `_layout.tsx`
+  - `useSettings()` hook để access settings từ bất kỳ component nào
+  - Auto-load settings từ AsyncStorage khi app start
+  - Auto-apply theme vào ThemeProvider
+  - Auto-apply language với i18n utility
+  - Setup notifications với expo-notifications (dynamic import để tránh lỗi nếu chưa cài)
+- **Theme Integration**: 
+  - `currentTheme` được tính từ settings và system colorScheme
+  - Áp dụng vào `ThemeProvider` và `StatusBar`
+- **Privacy Integration**: 
+  - Áp dụng privacy settings vào Profile component
+  - Ẩn/hiện email và phone dựa trên `privacy.showEmail` và `privacy.showPhone`
+
 # Scratchpad
 
 ## Project Overview
@@ -221,13 +437,22 @@
 codeZoneMobile/
 ├── Frontend/               # React Native + Expo
 │   ├── app/                # Expo Router pages
-│   │   ├── login.tsx       # Login page
-│   │   ├── signup.tsx      # Signup page
+│   │   ├── login.tsx       # Login page với validation
+│   │   ├── signup.tsx      # Signup page với validation
 │   │   ├── index.tsx       # Auth check & redirect
 │   │   └── (tabs)/         # Tab navigation
 │   ├── src/
 │   │   ├── components/     # Business components
-│   │   └── services/      # API services
+│   │   │   ├── Profile.tsx
+│   │   │   ├── EditProfileModal.tsx
+│   │   │   └── SettingsScreen.tsx
+│   │   ├── contexts/       # React Contexts
+│   │   │   └── SettingsContext.tsx
+│   │   ├── services/       # API services
+│   │   └── utils/          # Utilities
+│   │       ├── validation.ts
+│   │       ├── animations.ts
+│   │       └── i18n.ts
 │   ├── styles/             # External CSS files
 │   └── package.json
 ├── Backend/                # Node.js + Express
@@ -236,7 +461,10 @@ codeZoneMobile/
 │   ├── routes/             # API endpoints
 │   │   ├── auth.js         # Login, signup, me
 │   │   ├── attendance.js   # Clock in/out
-│   │   └── employees.js    # Employee profile
+│   │   └── employees.js    # Employee profile, update profile
+│   ├── scripts/            # Utility scripts
+│   │   ├── update-ip.js    # Auto-detect và update IP
+│   │   └── assign-employee-qrcodes.js
 │   ├── utils/              # JWT, password
 │   └── server.js           # Entry point
 └── scratchpad.md           # This file
@@ -248,27 +476,44 @@ codeZoneMobile/
 - **Database**: MongoDB với database name `DACN`
 - **Auth**: JWT với AsyncStorage
 - **Styling**: NativeWind (Tailwind CSS)
+- **Animations**: react-native-reanimated ~4.1.1
+- **State Management**: React Context API
 
 ### Chức năng đã hoàn thành:
 1. ✅ **Database Design** - 7 collections với multi-tenant
-2. ✅ **Backend API** - Authentication, Attendance, Employees endpoints
-3. ✅ **Frontend Structure** - Folder organization, API services
-4. ✅ **Login/Signup Pages** - UI design theo mẫu
-5. ✅ **Network Configuration** - Platform-aware API URLs
+2. ✅ **Backend API** - Authentication, Attendance, Employees endpoints (GET/PUT profile)
+3. ✅ **Frontend Structure** - Folder organization, API services, contexts, utils
+4. ✅ **Login/Signup Pages** - UI với regex validation, error messages, animations
+5. ✅ **Network Configuration** - Platform-aware API URLs, auto IP detection script
 6. ✅ **Authentication Flow** - Token management, auto-redirect
+7. ✅ **Home Screen** - Load user data và attendance status từ API
+8. ✅ **Attendance Screen** - Load attendance history từ API
+9. ✅ **Profile Screen** - Load profile data, statistics từ API
+10. ✅ **Edit Profile** - Modal edit profile với validation và animations
+11. ✅ **Settings Screen** - Cài đặt ứng dụng với Context API
+12. ✅ **Form Validation** - Regex validation utilities với error display
+13. ✅ **Animations** - Reusable animation hooks với react-native-reanimated
+14. ✅ **Settings Context** - App-wide state management cho settings
+15. ✅ **Notification System** - Real-time notifications với Socket.IO, Updates tab với 2 tabs (Chưa đọc/Đã đọc), Notification Detail Page, Pull-to-refresh
 
-## Nhiệm vụ hiện tại: Load dữ liệu thực từ Database
+## Nhiệm vụ tiếp theo
 
-### Mô tả:
-- Màn hình chính (Index.tsx) đang hiển thị "Welcome, Jack" và "UI/UX Intern" tĩnh
-- Màn hình Attendance đang dùng dữ liệu giả (generateAttendanceData)
-- Cần load dữ liệu thực từ database qua API
-
-### Kế hoạch:
-[X] Load user info trong Index.tsx (tên, role từ employee profile)
-[X] Load current attendance status trong Index.tsx (clock in/out status)
-[X] Load attendance history trong attendance.tsx từ API
-[X] Xử lý loading states và error handling
-[X] Test với dữ liệu thực từ database
-[X] Fix authentication error khi load data
-[X] Implement logout functionality - xóa token và redirect về login
+### Notification System với WebSocket/Socket.IO (Real-time)
+[X] Cài đặt dependencies: socket.io (Backend) và socket.io-client (Frontend)
+[X] Tạo database schema cho notifications collection và indexes
+[X] Setup Socket.IO server trong Backend với authentication middleware
+[X] Tạo Backend routes cho notifications (send, get, mark as read, delete)
+[X] Tạo NotificationContext với Socket.IO client và real-time updates
+[X] Tạo NotificationService cho API calls
+[X] Tạo UI components: NotificationCenter, NotificationItem, NotificationBadge
+[X] Tích hợp NotificationBadge vào Profile screen và tab navigation
+[X] Sửa Updates tab để hiển thị notifications trực tiếp (không dùng Modal)
+[X] Tạo Notification Detail Page với dynamic route `/notification/[id]`
+[X] Sửa logic mark as read để refresh notifications từ server
+[X] Sửa logic mark all as read để refresh notifications từ server
+[X] Sửa logic mark as read: không xóa recipient, chỉ cập nhật read: true
+[X] Thêm 2 tab: "Chưa đọc" và "Đã đọc" với query support
+[X] Thêm pull-to-refresh functionality
+[X] Sửa backend query để hỗ trợ filter theo unreadOnly=true/false
+[X] Sửa unreadCount calculation để tính từ database (tất cả notifications)
+[ ] Test real-time notifications: admin gửi → employee nhận ngay lập tức

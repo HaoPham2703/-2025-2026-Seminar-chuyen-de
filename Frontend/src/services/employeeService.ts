@@ -91,3 +91,37 @@ export async function getEmployeeById(employeeId: string): Promise<{ employee: E
 
   throw new Error(response.message || 'Failed to get employee');
 }
+
+export interface UpdateProfileRequest {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  address?: {
+    street?: string;
+    city?: string;
+    province?: string;
+  };
+  emergencyContact?: {
+    name: string;
+    relationship: string;
+    phone: string;
+  };
+}
+
+/**
+ * Cập nhật profile của employee hiện tại
+ */
+export async function updateEmployeeProfile(data: UpdateProfileRequest): Promise<EmployeeProfileResponse> {
+  const response = await apiFetch<EmployeeProfileResponse>('/employees/profile', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+
+  if (response.success && response.data) {
+    return response.data;
+  }
+
+  throw new Error(response.message || 'Failed to update profile');
+}

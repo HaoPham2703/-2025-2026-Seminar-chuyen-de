@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Alert } from "react-native";
+import { useState, useEffect, useCallback } from "react";
+import { View, Text, StyleSheet, ActivityIndicator, Alert } from "react-native";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFocusEffect } from "expo-router";
 import ClockButton from "./ClockButton";
 import TimeStats from "./TimeStats";
 import LocationStatus from "./LocationStatus";
@@ -10,6 +11,8 @@ import StatusNotification from "./StatusNotification";
 import { getEmployeeProfile } from "@/src/services/employeeService";
 import { getCurrentAttendance, clockIn, clockOut, type AttendanceRecord } from "@/src/services/attendanceService";
 import { getAuthToken } from "@/src/services/api";
+import { RefreshableScrollView } from "@/components/refreshable-scroll-view";
+import { useTabReload } from "@/hooks/use-tab-reload";
 
 const Index = () => {
   const insets = useSafeAreaInsets();
@@ -25,6 +28,15 @@ const Index = () => {
   const [employeeId, setEmployeeId] = useState<string>("");
   const [currentAttendance, setCurrentAttendance] = useState<AttendanceRecord | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
+
+  // Register reload function for tab double press
+  const handleReload = useCallback(async () => {
+    if (employeeId) {
+      await loadUserData();
+    }
+  }, [employeeId]);
+
+  const { scrollViewRef } = useTabReload(handleReload, 'index');
 
   // Load user info and current attendance
   useEffect(() => {
@@ -52,6 +64,38 @@ const Index = () => {
       isMounted = false;
     };
   }, []);
+
+  // Refresh attendance when screen is focused (avoid needing manual reload)
+  useFocusEffect(
+    useCallback(() => {
+      if (!employeeId) return () => {};
+      let cancelled = false;
+
+      (async () => {
+        try {
+          const token = await getAuthToken();
+          if (!token) return;
+          const attendanceData = await getCurrentAttendance(employeeId);
+          if (cancelled) return;
+
+          setCurrentAttendance(attendanceData.attendance);
+          if (attendanceData.attendance && attendanceData.isClockedIn && !attendanceData.isClockedOut) {
+            setIsClockedIn(true);
+            setClockInTime(new Date(attendanceData.attendance.clockIn.time));
+          } else {
+            setIsClockedIn(false);
+            setClockInTime(null);
+          }
+        } catch (e) {
+          // non-critical
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [employeeId])
+  );
 
   // Update time every second
   useEffect(() => {
@@ -234,12 +278,13 @@ const Index = () => {
 
   return (
     <View style={styles.container}>
-      <ScrollView
+      <RefreshableScrollView
         contentContainerStyle={[
           styles.scrollContent,
           { paddingTop: Math.max(insets.top + 20, 40) }
         ]}
         showsVerticalScrollIndicator={false}
+        onRefresh={handleReload}
       >
         {/* Header */}
         <Animated.View
@@ -289,7 +334,7 @@ const Index = () => {
           isClockedIn={isClockedIn}
           clockInTime={clockInTime ? formatTime(clockInTime) : undefined}
         />
-      </ScrollView>
+      </RefreshableScrollView>
 
       {/* Confirm Modal */}
       <ConfirmModal

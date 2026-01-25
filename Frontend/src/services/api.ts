@@ -3,6 +3,7 @@
  */
 
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 // Detect platform và sử dụng IP address phù hợp
 // Trên iOS/Android simulator, localhost không hoạt động, cần dùng IP thực tế
@@ -17,11 +18,24 @@ const getApiBaseUrl = () => {
     return 'http://localhost:3000/api';
   }
 
-  // Trên iOS/Android, cần dùng IP address của máy
-  // Thay đổi IP này thành IP của máy bạn (xem trong Expo terminal hoặc ipconfig)
-  // Ví dụ: 'http://192.168.1.6:3000/api'
-  // Hoặc dùng ngrok/tunnel cho production
-  return 'http://192.168.1.6:3000/api'; // ⚠️ THAY ĐỔI IP NÀY THÀNH IP CỦA MÁY BẠN
+  // Android Emulator: localhost của emulator != localhost của máy host
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:3000/api';
+  }
+
+  // Cố gắng auto-detect IP từ Expo dev server (hostUri dạng "192.168.x.x:19000")
+  const hostUri = Constants.expoConfig?.hostUri || Constants.hostUri;
+  const host = hostUri?.split(':')?.[0];
+  if (host && /^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
+    return `http://${host}:3000/api`;
+  }
+
+  // Fallback: yêu cầu cấu hình EXPO_PUBLIC_API_URL khi chạy trên device thật
+  console.warn(
+    'EXPO_PUBLIC_API_URL is not set; falling back to localhost. ' +
+      'On physical devices, set EXPO_PUBLIC_API_URL to your machine LAN IP (e.g. http://192.168.1.10:3000/api).'
+  );
+  return 'http://localhost:3000/api';
 };
 
 const API_BASE_URL = getApiBaseUrl();

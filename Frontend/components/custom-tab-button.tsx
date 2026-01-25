@@ -3,6 +3,7 @@ import { PlatformPressable } from '@react-navigation/elements';
 import { View, StyleSheet, ViewStyle } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import React from 'react';
+import { triggerTabScrollToTopIfNeeded } from '@/hooks/use-tab-reload';
 
 export function CustomTabButton(props: BottomTabBarButtonProps) {
   const { children, onPress, onPressIn, accessibilityState, style, ...restProps } = props;
@@ -16,10 +17,16 @@ export function CustomTabButton(props: BottomTabBarButtonProps) {
     style,
   ].filter(Boolean) as ViewStyle[];
 
+  const handlePress = React.useCallback((ev: any) => {
+    // Check nếu bấm vào tab hiện tại thì scroll to top
+    triggerTabScrollToTopIfNeeded(isSelected || false);
+    onPress?.(ev);
+  }, [isSelected, onPress]);
+
   return (
     <PlatformPressable
       {...restProps}
-      onPress={onPress}
+      onPress={handlePress}
       onPressIn={(ev) => {
         setPressed(true);
         if (process.env.EXPO_OS === 'ios') {
