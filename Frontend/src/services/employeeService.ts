@@ -77,6 +77,30 @@ export async function getEmployeeProfile(): Promise<EmployeeProfileResponse> {
   throw new Error(response.message || 'Failed to get employee profile');
 }
 
+export interface EmployeeQrCode {
+  code: string;
+  qrImageUrl?: string;
+  generatedAt?: string;
+  expiresAt?: string;
+  isActive?: boolean;
+}
+
+/**
+ * Lấy QR code của một employee theo ID
+ * (Sử dụng cho màn QR cá nhân nếu cần load lại độc lập với profile)
+ */
+export async function getEmployeeQrCode(employeeId: string): Promise<EmployeeQrCode | null> {
+  const response = await apiFetch<{ qrCode: EmployeeQrCode | null }>(
+    `/employees/${employeeId}/qr-code`
+  );
+
+  if (response.success && response.data) {
+    return response.data.qrCode ?? null;
+  }
+
+  throw new Error(response.message || 'Failed to get employee QR code');
+}
+
 /**
  * Lấy thông tin chi tiết của một employee (admin only)
  */

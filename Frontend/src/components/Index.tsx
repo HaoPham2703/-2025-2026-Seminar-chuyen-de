@@ -1,20 +1,24 @@
 import { useState, useEffect, useCallback } from "react";
-import { View, Text, StyleSheet, ActivityIndicator, Alert } from "react-native";
+import { View, Text, StyleSheet, ActivityIndicator, Alert, TouchableOpacity } from "react-native";
 import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
+import { QrCode } from "lucide-react-native";
 import ClockButton from "./ClockButton";
 import TimeStats from "./TimeStats";
 import LocationStatus from "./LocationStatus";
 import ConfirmModal from "./ConfirmModal";
 import StatusNotification from "./StatusNotification";
+import EmployeeQrCard from "./EmployeeQrCard";
 import { getEmployeeProfile } from "@/src/services/employeeService";
 import { getCurrentAttendance, clockIn, clockOut, type AttendanceRecord } from "@/src/services/attendanceService";
 import { getAuthToken } from "@/src/services/api";
 import { RefreshableScrollView } from "@/components/refreshable-scroll-view";
 import { useTabReload } from "@/hooks/use-tab-reload";
+import { useTheme } from "@/src/hooks/use-theme";
 
 const Index = () => {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isClockedIn, setIsClockedIn] = useState(false);
@@ -26,6 +30,9 @@ const Index = () => {
   const [userName, setUserName] = useState<string>("");
   const [userRole, setUserRole] = useState<string>("");
   const [employeeId, setEmployeeId] = useState<string>("");
+  const [employeeCode, setEmployeeCode] = useState<string>("");
+  const [qrCode, setQrCode] = useState<string | null>(null);
+  const [showQrModal, setShowQrModal] = useState(false);
   const [currentAttendance, setCurrentAttendance] = useState<AttendanceRecord | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
 
@@ -126,6 +133,8 @@ const Index = () => {
       setUserName(fullName);
       setUserRole(profileData.employee.employment.position || "Employee");
       setEmployeeId(profileData.employee.id);
+      setEmployeeCode(profileData.employee.employeeId || "");
+      setQrCode(profileData.employee.qrCode?.code || null);
 
       // Load current attendance
       if (profileData.employee.id) {
@@ -277,7 +286,7 @@ const Index = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <RefreshableScrollView
         contentContainerStyle={[
           styles.scrollContent,
@@ -292,13 +301,13 @@ const Index = () => {
           style={styles.header}
         >
           {loading ? (
-            <ActivityIndicator size="small" color="hsl(30, 55%, 55%)" />
+            <ActivityIndicator size="small" color={colors.accent} />
           ) : (
             <>
-              <Text style={styles.welcomeText}>
-                <Text style={styles.welcomeHighlight}>Welcome,</Text> {userName || "User"}
+              <Text style={[styles.welcomeText, { color: colors.text }]}>
+                <Text style={[styles.welcomeHighlight, { color: colors.accent }]}>Welcome,</Text> {userName || "User"}
               </Text>
-              <Text style={styles.roleText}>{userRole || "Employee"}</Text>
+              <Text style={[styles.roleText, { color: colors.textSecondary }]}>{userRole || "Employee"}</Text>
             </>
           )}
         </Animated.View>
@@ -308,8 +317,8 @@ const Index = () => {
           entering={FadeInDown.delay(100).duration(300)}
           style={styles.timeDisplay}
         >
-          <Text style={styles.currentTime}>{formatTime(currentTime)}</Text>
-          <Text style={styles.currentDate}>{formatDate(currentTime)}</Text>
+          <Text style={[styles.currentTime, { color: colors.text }]}>{formatTime(currentTime)}</Text>
+          <Text style={[styles.currentDate, { color: colors.textSecondary }]}>{formatDate(currentTime)}</Text>
         </Animated.View>
 
         {/* Clock Button */}
@@ -321,6 +330,20 @@ const Index = () => {
             isLate={isLate()}
             onClick={handleClockAction} 
           />
+        </Animated.View>
+
+        {/* QR Code Button */}
+        <Animated.View
+          entering={FadeInDown.delay(200).duration(300)}
+        >
+          <TouchableOpacity
+            style={[styles.qrButton, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => setShowQrModal(true)}
+            activeOpacity={0.7}
+          >
+            <QrCode size={20} color={colors.accent} />
+            <Text style={[styles.qrButtonText, { color: colors.accent }]}>Mã QR của tôi</Text>
+          </TouchableOpacity>
         </Animated.View>
 
         {/* Location Status */}
@@ -350,6 +373,15 @@ const Index = () => {
         time={clockInTime ? formatTime(clockInTime) : undefined}
         onClose={() => setNotification(null)}
       />
+
+      {/* QR Code Modal */}
+      <EmployeeQrCard
+        visible={showQrModal}
+        onClose={() => setShowQrModal(false)}
+        qrValue={qrCode}
+        employeeName={userName}
+        employeeCode={employeeCode}
+      />
     </View>
   );
 };
@@ -357,7 +389,6 @@ const Index = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "hsl(30, 50%, 97%)",
   },
   scrollContent: {
     alignItems: "center",
@@ -372,13 +403,11 @@ const styles = StyleSheet.create({
   welcomeText: {
     fontSize: 28,
     fontWeight: "700",
-    color: "hsl(25, 30%, 20%)",
   },
   welcomeHighlight: {
-    color: "hsl(30, 55%, 55%)",
+    // Color applied dynamically
   },
   roleText: {
-    color: "hsl(25, 15%, 50%)",
     fontSize: 14,
     marginTop: 4,
   },
@@ -389,19 +418,31 @@ const styles = StyleSheet.create({
   currentTime: {
     fontSize: 64,
     fontWeight: "700",
-    color: "hsl(25, 30%, 20%)",
     letterSpacing: -1,
   },
   currentDate: {
-    color: "hsl(25, 15%, 50%)",
     marginTop: 8,
     fontSize: 14,
   },
   swipeHint: {
     fontSize: 12,
-    color: "hsl(25, 15%, 50%)",
     marginTop: 8,
     marginBottom: 24,
+  },
+  qrButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  qrButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
   },
 });
 

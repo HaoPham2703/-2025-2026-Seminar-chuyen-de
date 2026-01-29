@@ -244,20 +244,237 @@ router.put('/profile', async (req, res, next) => {
 });
 
 /**
- * GET /api/employees/:employeeId
- * Lấy thông tin chi tiết của một employee (admin only)
+ * POST /api/employees/:employeeId/leave-requests
+ * Tạo yêu cầu nghỉ phép cho employee (self-service)
  */
-router.get('/:employeeId', async (req, res, next) => {
+router.post('/:employeeId/leave-requests', async (req, res, next) => {
+  try {
+    const { employeeId } = req.params;
+    const { tenantId, userId } = req.user;
+    const { type, startDate, endDate, reason } = req.body;
+
+    if (!type || !startDate || !endDate || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: 'type, startDate, endDate và reason là bắt buộc'
+      });
+    }
+
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+    const employeeObjectId = new ObjectId(employeeId);
+    const userObjectId = new ObjectId(userId);
+
+    // Đảm bảo employee thuộc tenant hiện tại và gắn với user hiện tại
+    const employee = await db.collection('employees').findOne({
+      _id: employeeObjectId,
+      tenantId: tenantObjectId,
+      userId: userObjectId
+    });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found or not owned by current user'
+      });
+    }
+
+    const now = new Date();
+    const doc = {
+      tenantId: tenantObjectId,
+      employeeId: employeeObjectId,
+      userId: userObjectId,
+      type, // ví dụ: ANNUAL, SICK, UNPAID, OTHER
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+      reason,
+      status: 'PENDING', // PENDING | APPROVED | REJECTED
+      createdAt: now,
+      updatedAt: now,
+      reviewedBy: null,
+      reviewedAt: null,
+      reviewComment: null
+    };
+
+    const result = await db.collection('leaveRequests').insertOne(doc);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: result.insertedId.toString()
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/employees/:employeeId/leave-requests
+ * Danh sách yêu cầu nghỉ phép của employee
+ */
+router.get('/:employeeId/leave-requests', async (req, res, next) => {
+  try {
+    const { employeeId } = req.params;
+    const { tenantId, userId } = req.user;
+    const db = getDatabase();
+
+    const tenantObjectId = new ObjectId(tenantId);
+    const employeeObjectId = new ObjectId(employeeId);
+    const userObjectId = new ObjectId(userId);
+
+    const requests = await db
+      .collection('leaveRequests')
+      .find({
+        tenantId: tenantObjectId,
+        employeeId: employeeObjectId,
+        userId: userObjectId
+      })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.json({
+      success: true,
+      data: {
+        requests
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/employees/:employeeId/attendance-adjustments
+ * Tạo yêu cầu điều chỉnh chấm công cho 1 ngày cụ thể
+ */
+router.post('/:employeeId/attendance-adjustments', async (req, res, next) => {
+  try {
+    const { employeeId } = req.params;
+    const { tenantId, userId } = req.user;
+    const { date, proposedClockIn, proposedClockOut, reason } = req.body;
+
+    if (!date || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: 'date và reason là bắt buộc'
+      });
+    }
+
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+    const employeeObjectId = new ObjectId(employeeId);
+    const userObjectId = new ObjectId(userId);
+
+    // Đảm bảo employee thuộc tenant hiện tại và gắn với user hiện tại
+    const employee = await db.collection('employees').findOne({
+      _id: employeeObjectId,
+      tenantId: tenantObjectId,
+      userId: userObjectId
+    });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found or not owned by current user'
+      });
+    }
+
+    const targetDate = new Date(date);
+    targetDate.setHours(0, 0, 0, 0);
+
+    // Tìm attendance record của ngày đó (nếu có) để tham chiếu
+    const attendance = await db.collection('attendance').findOne(
+      {
+        tenantId: tenantObjectId,
+        employeeId: employeeObjectId,
+        date: targetDate
+      },
+      { sort: { createdAt: -1 } }
+    );
+
+    const now = new Date();
+    const doc = {
+      tenantId: tenantObjectId,
+      employeeId: employeeObjectId,
+      userId: userObjectId,
+      attendanceId: attendance ? attendance._id : null,
+      date: targetDate,
+      proposedClockIn: proposedClockIn ? new Date(proposedClockIn) : null,
+      proposedClockOut: proposedClockOut ? new Date(proposedClockOut) : null,
+      reason,
+      status: 'PENDING', // PENDING | APPROVED | REJECTED
+      createdAt: now,
+      updatedAt: now,
+      reviewedBy: null,
+      reviewedAt: null,
+      reviewComment: null
+    };
+
+    const result = await db.collection('attendanceAdjustments').insertOne(doc);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: result.insertedId.toString()
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/employees/:employeeId/attendance-adjustments
+ * Danh sách yêu cầu điều chỉnh chấm công của employee
+ */
+router.get('/:employeeId/attendance-adjustments', async (req, res, next) => {
+  try {
+    const { employeeId } = req.params;
+    const { tenantId, userId } = req.user;
+    const db = getDatabase();
+
+    const tenantObjectId = new ObjectId(tenantId);
+    const employeeObjectId = new ObjectId(employeeId);
+    const userObjectId = new ObjectId(userId);
+
+    const adjustments = await db
+      .collection('attendanceAdjustments')
+      .find({
+        tenantId: tenantObjectId,
+        employeeId: employeeObjectId,
+        userId: userObjectId
+      })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.json({
+      success: true,
+      data: {
+        adjustments
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/employees/:employeeId/qr-code
+ * Lấy thông tin QR code của một employee
+ */
+router.get('/:employeeId/qr-code', async (req, res, next) => {
   try {
     const { employeeId } = req.params;
     const { tenantId } = req.user;
     const db = getDatabase();
+
+    const tenantObjectId = new ObjectId(tenantId);
     const employeeObjectId = new ObjectId(employeeId);
-    const tenantIdObjectId = new ObjectId(tenantId);
 
     const employee = await db.collection('employees').findOne({
       _id: employeeObjectId,
-      tenantId: tenantIdObjectId
+      tenantId: tenantObjectId
     });
 
     if (!employee) {
@@ -269,7 +486,9 @@ router.get('/:employeeId', async (req, res, next) => {
 
     res.json({
       success: true,
-      data: { employee }
+      data: {
+        qrCode: employee.qrCode || null
+      }
     });
   } catch (error) {
     next(error);

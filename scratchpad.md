@@ -16,6 +16,15 @@
 - As a user, I can truy cập các menu (Settings, About, Help, Logout)
 - As a user, I can đăng xuất khỏi tài khoản
 
+#### Usecase 3: Xin nghỉ & Điều chỉnh chấm công
+- As an employee, I can gửi yêu cầu nghỉ phép (leave request) cho từng ngày/khung thời gian.
+- As an employee, I can gửi yêu cầu điều chỉnh chấm công khi quên chấm hoặc sai giờ.
+- As an employee, I can xem lại toàn bộ lịch sử các yêu cầu nghỉ/điều chỉnh và trạng thái duyệt.
+
+#### Usecase 4: Mã QR cá nhân & chấm công bằng QR
+- As an employee, I can xem mã QR định danh cá nhân để admin/manager quét khi vào/ra ca.
+- As an admin, I can quét QR của nhân viên để ghi nhận attendance theo tenant.
+
 ### Project structures
 
 #### Technical
@@ -40,6 +49,35 @@
 - Sử dụng TypeScript cho type safety
 
 ## You have learned in the past
+
+### Lesson 19: Hiển thị QR trong Expo (Employee QR)
+- **Triệu chứng**: Màn QR chỉ hiện fallback text (không render QR).
+- **Giải pháp**:
+  - Cài `react-native-qrcode-svg` (Expo) và đảm bảo `react-native-svg` đúng version tương thích.
+  - Import trực tiếp `QRCode` từ `react-native-qrcode-svg` để render QR ổn định.
+
+### Lesson 20: Tích hợp Theme và i18n vào SettingsScreen
+- **Vấn đề**: SettingsScreen có toggle theme/language nhưng không hoạt động - UI không đổi theme và text không đổi ngôn ngữ.
+- **Giải pháp**:
+  - Tích hợp `useSettings()` hook để lấy `currentTheme` và `settings.language`.
+  - Tạo `getThemeColors()` function để trả về màu sắc động dựa trên `currentTheme` (dark/light).
+  - Sử dụng `t()` function từ `i18n.ts` để translate tất cả text trong SettingsScreen.
+  - Sử dụng `getLanguage()` để hiển thị text động cho các phần chưa có translation key.
+  - Áp dụng `themeColors` vào tất cả components (SettingItem, ThemeOption, LanguageOption).
+  - Thêm `forceUpdate` state để force re-render khi language thay đổi (đảm bảo translations được cập nhật ngay).
+  - Theme được áp dụng ngay lập tức khi user toggle (optimistic update + context sync).
+  - Language được áp dụng ngay lập tức qua `setLanguage()` trong SettingsContext.
+
+### Lesson 21: Áp dụng Dark Mode cho tất cả các tab
+- **Vấn đề**: Dark mode chỉ hoạt động ở SettingsScreen, các tab khác (Home, Profile, Attendance) vẫn dùng màu sắc hardcoded.
+- **Giải pháp**:
+  - Tạo `useTheme()` hook trong `Frontend/src/hooks/use-theme.ts` để cung cấp theme colors cho tất cả components.
+  - Hook trả về `colors` object với các màu sắc động dựa trên `currentTheme` từ SettingsContext.
+  - Áp dụng theme vào Home screen (Index.tsx): container background, text colors, icon colors, button colors.
+  - Áp dụng theme vào Profile screen: avatar, cards, menu items, stat cards, text colors.
+  - Áp dụng theme vào Attendance screen: container background, header, loading indicator, text colors.
+  - Loại bỏ hardcoded HSL colors trong styles và thay bằng dynamic colors từ theme.
+  - Theme tự động cập nhật khi user thay đổi trong Settings (do SettingsContext cung cấp `currentTheme`).
 
 ### Bug 1: MongoDB Shell Script Syntax Error
 - **Error description**: `SyntaxError: Missing semicolon` khi chạy MongoDB Shell script
@@ -490,11 +528,13 @@ codeZoneMobile/
 8. ✅ **Attendance Screen** - Load attendance history từ API
 9. ✅ **Profile Screen** - Load profile data, statistics từ API
 10. ✅ **Edit Profile** - Modal edit profile với validation và animations
-11. ✅ **Settings Screen** - Cài đặt ứng dụng với Context API
+11. ✅ **Settings Screen** - Cài đặt ứng dụng với Context API, tích hợp theme (dark/light mode) và i18n (vi/en)
 12. ✅ **Form Validation** - Regex validation utilities với error display
 13. ✅ **Animations** - Reusable animation hooks với react-native-reanimated
 14. ✅ **Settings Context** - App-wide state management cho settings
 15. ✅ **Notification System** - Real-time notifications với Socket.IO, Updates tab với 2 tabs (Chưa đọc/Đã đọc), Notification Detail Page, Pull-to-refresh
+16. ✅ **Leave & Adjustments (Employee)** - Xin nghỉ, điều chỉnh chấm công từ tab Attendance, xem lịch sử yêu cầu ở tab Resources
+17. ✅ **Employee QR** - Màn “Mã QR của tôi” trong Profile hiển thị QR cá nhân từ backend
 
 ## Nhiệm vụ tiếp theo
 
@@ -517,3 +557,15 @@ codeZoneMobile/
 [X] Sửa backend query để hỗ trợ filter theo unreadOnly=true/false
 [X] Sửa unreadCount calculation để tính từ database (tất cả notifications)
 [ ] Test real-time notifications: admin gửi → employee nhận ngay lập tức
+
+### Leave Requests, Attendance Adjustments & Employee QR (Mobile Employee)
+[X] Phân tích API hiện có và thiết kế/bổ sung endpoints cho LeaveRequests & AttendanceAdjustments (Backend)
+[X] Tạo `leaveService.ts` và mở rộng `employeeService.ts` cho QR code (Frontend services)
+[X] Tạo UI xin nghỉ & điều chỉnh công (modals + gắn với context menu Attendance) và màn danh sách yêu cầu
+[X] Tạo UI QR cá nhân cho nhân viên và tích hợp vào Profile
+[X] Viết mô tả (ngắn gọn) vào scratchpad + liệt kê kịch bản test end-to-end cho các luồng mới
+
+- Kịch bản test đề xuất:
+  - Nhân viên vào tab Attendance, mở menu ngày bất kỳ → chọn \"Xin nghỉ phép\" → gửi lý do → kiểm tra xuất hiện trong tab Resources mục \"Yêu cầu nghỉ phép\" với trạng thái PENDING.
+  - Nhân viên vào tab Attendance, mở menu ngày bất kỳ → chọn \"Điều chỉnh\" → gửi lý do → kiểm tra xuất hiện trong tab Resources mục \"Yêu cầu điều chỉnh chấm công\" với trạng thái PENDING.
+  - Từ tab Profile, chọn \"Mã QR của tôi\" → kiểm tra QR (hoặc fallback text) hiển thị cùng tên và mã nhân viên; đóng/mở lại nhiều lần không lỗi.

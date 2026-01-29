@@ -10,7 +10,8 @@ import {
     Mail,
     Settings,
     User,
-    Bell
+    Bell,
+    QrCode
 } from "lucide-react-native";
 import { useEffect, useState, useCallback } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
@@ -24,10 +25,12 @@ import EditProfileModal from "./EditProfileModal";
 import SettingsScreen from "./SettingsScreen";
 import NotificationCenter from "./NotificationCenter";
 import NotificationBadge from "./NotificationBadge";
+import EmployeeQrCard from "./EmployeeQrCard";
 import { useSettings } from "@/src/contexts/SettingsContext";
 import { useNotifications } from "@/src/contexts/NotificationContext";
 import { RefreshableScrollView } from "@/components/refreshable-scroll-view";
 import { useTabReload } from "@/hooks/use-tab-reload";
+import { useTheme } from "@/src/hooks/use-theme";
 
 interface MenuItemProps {
   icon: React.ReactNode;
@@ -39,22 +42,23 @@ interface MenuItemProps {
 }
 
 const MenuItem = ({ icon, title, subtitle, onPress, delay = 0, isDestructive = false }: MenuItemProps) => {
+  const { colors } = useTheme();
   return (
     <Animated.View entering={FadeInDown.delay(delay).duration(300)}>
       <TouchableOpacity
-        style={[styles.menuItem, isDestructive && styles.menuItemDestructive]}
+        style={[styles.menuItem, { backgroundColor: colors.card }, isDestructive && { backgroundColor: isDestructive ? colors.error + '15' : colors.card }]}
         onPress={onPress}
         activeOpacity={0.7}
       >
-        <View style={[styles.menuIconContainer, isDestructive && styles.menuIconContainerDestructive]}>
+        <View style={[styles.menuIconContainer, { backgroundColor: colors.backgroundSecondary }, isDestructive && { backgroundColor: colors.error + '20' }]}>
           {icon}
         </View>
         <View style={styles.menuTextContainer}>
-          <Text style={[styles.menuTitle, isDestructive && styles.menuTitleDestructive]}>
+          <Text style={[styles.menuTitle, { color: isDestructive ? colors.error : colors.text }]}>
             {title}
           </Text>
           {subtitle && (
-            <Text style={styles.menuSubtitle}>{subtitle}</Text>
+            <Text style={[styles.menuSubtitle, { color: colors.textSecondary }]}>{subtitle}</Text>
           )}
         </View>
       </TouchableOpacity>
@@ -70,21 +74,23 @@ interface StatCardProps {
 }
 
 const StatCard = ({ icon, label, value, delay = 0 }: StatCardProps) => {
+  const { colors } = useTheme();
   return (
     <Animated.View 
       entering={FadeInDown.delay(delay).duration(300)}
-      style={styles.statCard}
+      style={[styles.statCard, { backgroundColor: colors.card }]}
     >
-      <View style={styles.statIconContainer}>
+      <View style={[styles.statIconContainer, { backgroundColor: colors.backgroundSecondary }]}>
         {icon}
       </View>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={[styles.statValue, { color: colors.text }]}>{value}</Text>
+      <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{label}</Text>
     </Animated.View>
   );
 };
 
 const Profile = () => {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { settings } = useSettings();
@@ -94,6 +100,7 @@ const Profile = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
 
   useEffect(() => {
     loadProfileData();
@@ -152,6 +159,10 @@ const Profile = () => {
     Alert.alert("Trợ giúp", "Tính năng này sẽ được thêm vào sau.");
   };
 
+  const handleShowQr = () => {
+    setShowQrModal(true);
+  };
+
   const handleLogout = () => {
     Alert.alert(
       "Đăng xuất",
@@ -183,16 +194,16 @@ const Profile = () => {
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.loadingContainer]}>
-        <ActivityIndicator size="large" color="hsl(30, 55%, 55%)" />
+      <View style={[styles.container, styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
   if (!profileData) {
     return (
-      <View style={[styles.container, styles.loadingContainer]}>
-        <Text style={styles.errorText}>Không thể tải thông tin profile</Text>
+      <View style={[styles.container, styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <Text style={[styles.errorText, { color: colors.text }]}>Không thể tải thông tin profile</Text>
       </View>
     );
   }
@@ -206,7 +217,7 @@ const Profile = () => {
   const stats = profileData.employee.statistics;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <RefreshableScrollView
         contentContainerStyle={[
           styles.scrollContent,
@@ -221,37 +232,37 @@ const Profile = () => {
           style={styles.header}
         >
           <View style={styles.avatarContainer}>
-            <View style={styles.avatar}>
-              <User size={48} color="hsl(30, 55%, 55%)" />
+            <View style={[styles.avatar, { backgroundColor: colors.card, borderColor: colors.accent }]}>
+              <User size={48} color={colors.accent} />
             </View>
             <TouchableOpacity
-              style={styles.editButton}
+              style={[styles.editButton, { backgroundColor: colors.background, borderColor: colors.accent }]}
               onPress={handleEditProfile}
               activeOpacity={0.7}
             >
-              <Edit size={16} color="hsl(30, 55%, 55%)" />
+              <Edit size={16} color={colors.accent} />
             </TouchableOpacity>
           </View>
           
-          <Text style={styles.name}>{fullName}</Text>
-          <Text style={styles.role}>{role}</Text>
+          <Text style={[styles.name, { color: colors.text }]}>{fullName}</Text>
+          <Text style={[styles.role, { color: colors.accent }]}>{role}</Text>
           
           {settings.privacy.showEmail && (
             <View style={styles.infoRow}>
-              <Mail size={16} color="hsl(25, 15%, 50%)" />
-              <Text style={styles.email}>{email}</Text>
+              <Mail size={16} color={colors.textSecondary} />
+              <Text style={[styles.email, { color: colors.textSecondary }]}>{email}</Text>
             </View>
           )}
           
           <View style={styles.infoRow}>
-            <Briefcase size={16} color="hsl(25, 15%, 50%)" />
-            <Text style={styles.employeeId}>{employeeId}</Text>
+            <Briefcase size={16} color={colors.textSecondary} />
+            <Text style={[styles.employeeId, { color: colors.textSecondary }]}>{employeeId}</Text>
           </View>
 
           {settings.privacy.showPhone && profileData.employee.personalInfo.phone && (
             <View style={styles.infoRow}>
-              <Briefcase size={16} color="hsl(25, 15%, 50%)" />
-              <Text style={styles.email}>{profileData.employee.personalInfo.phone}</Text>
+              <Briefcase size={16} color={colors.textSecondary} />
+              <Text style={[styles.email, { color: colors.textSecondary }]}>{profileData.employee.personalInfo.phone}</Text>
             </View>
           )}
         </Animated.View>
@@ -262,19 +273,19 @@ const Profile = () => {
           style={styles.statsContainer}
         >
           <StatCard
-            icon={<Calendar size={24} color="hsl(30, 55%, 55%)" />}
+            icon={<Calendar size={24} color={colors.accent} />}
             label="Ngày làm việc"
             value={stats.totalWorkingDays.toString()}
             delay={150}
           />
           <StatCard
-            icon={<Clock size={24} color="hsl(30, 55%, 55%)" />}
+            icon={<Clock size={24} color={colors.accent} />}
             label="Tổng giờ"
             value={`${Math.round(stats.totalHours)}h`}
             delay={200}
           />
           <StatCard
-            icon={<Award size={24} color="hsl(30, 55%, 55%)" />}
+            icon={<Award size={24} color={colors.accent} />}
             label="Đúng giờ"
             value={`${stats.onTimeRate}%`}
             delay={250}
@@ -286,12 +297,12 @@ const Profile = () => {
           entering={FadeInDown.delay(300).duration(300)}
           style={styles.menuContainer}
         >
-          <Text style={styles.sectionTitle}>Tài khoản</Text>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Tài khoản</Text>
           
           <MenuItem
             icon={
               <View style={{ position: 'relative' }}>
-                <Bell size={20} color="hsl(30, 55%, 55%)" />
+                <Bell size={20} color={colors.icon} />
                 <View style={{ position: 'absolute', top: -4, right: -4 }}>
                   <NotificationBadge count={unreadCount} size={16} />
                 </View>
@@ -304,7 +315,7 @@ const Profile = () => {
           />
           
           <MenuItem
-            icon={<Settings size={20} color="hsl(30, 55%, 55%)" />}
+            icon={<Settings size={20} color={colors.icon} />}
             title="Cài đặt"
             subtitle="Quản lý cài đặt ứng dụng"
             onPress={handleSettings}
@@ -312,7 +323,15 @@ const Profile = () => {
           />
           
           <MenuItem
-            icon={<Info size={20} color="hsl(30, 55%, 55%)" />}
+            icon={<QrCode size={20} color={colors.icon} />}
+            title="Mã QR của tôi"
+            subtitle="Hiển thị mã QR cho quản lý quét"
+            onPress={handleShowQr}
+            delay={425}
+          />
+          
+          <MenuItem
+            icon={<Info size={20} color={colors.icon} />}
             title="Về ứng dụng"
             subtitle="Thông tin phiên bản và giấy phép"
             onPress={handleAbout}
@@ -320,7 +339,7 @@ const Profile = () => {
           />
           
           <MenuItem
-            icon={<HelpCircle size={20} color="hsl(30, 55%, 55%)" />}
+            icon={<HelpCircle size={20} color={colors.icon} />}
             title="Trợ giúp"
             subtitle="Câu hỏi thường gặp và hỗ trợ"
             onPress={handleHelp}
@@ -328,7 +347,7 @@ const Profile = () => {
           />
           
           <MenuItem
-            icon={<LogOut size={20} color="hsl(0, 70%, 55%)" />}
+            icon={<LogOut size={20} color={colors.error} />}
             title="Đăng xuất"
             subtitle="Đăng xuất khỏi tài khoản"
             onPress={handleLogout}
@@ -359,6 +378,15 @@ const Profile = () => {
         visible={showNotifications}
         onClose={() => setShowNotifications(false)}
       />
+
+      {/* Employee QR Modal */}
+      <EmployeeQrCard
+        visible={showQrModal}
+        onClose={() => setShowQrModal(false)}
+        qrValue={profileData.employee.qrCode?.code || null}
+        employeeName={fullName}
+        employeeCode={employeeId}
+      />
     </View>
   );
 };
@@ -366,7 +394,6 @@ const Profile = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "hsl(30, 50%, 97%)",
   },
   scrollContent: {
     paddingHorizontal: 20,
@@ -384,11 +411,9 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: "hsl(30, 40%, 92%)",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 3,
-    borderColor: "hsl(30, 55%, 55%)",
   },
   editButton: {
     position: "absolute",
@@ -397,21 +422,17 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "hsl(30, 50%, 97%)",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 2,
-    borderColor: "hsl(30, 55%, 55%)",
   },
   name: {
     fontSize: 28,
     fontWeight: "700",
-    color: "hsl(25, 30%, 20%)",
     marginBottom: 4,
   },
   role: {
     fontSize: 16,
-    color: "hsl(30, 55%, 55%)",
     fontWeight: "600",
     marginBottom: 16,
   },
@@ -423,11 +444,9 @@ const styles = StyleSheet.create({
   },
   email: {
     fontSize: 14,
-    color: "hsl(25, 15%, 50%)",
   },
   employeeId: {
     fontSize: 14,
-    color: "hsl(25, 15%, 50%)",
     fontWeight: "500",
   },
   statsContainer: {
@@ -438,18 +457,15 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: "hsl(30, 40%, 95%)",
     borderRadius: 16,
     padding: 16,
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "hsl(30, 25%, 88%)",
   },
   statIconContainer: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: "hsl(30, 50%, 97%)",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 12,
@@ -457,12 +473,10 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 24,
     fontWeight: "700",
-    color: "hsl(25, 30%, 20%)",
     marginBottom: 4,
   },
   statLabel: {
     fontSize: 12,
-    color: "hsl(25, 15%, 50%)",
     textAlign: "center",
   },
   menuContainer: {
@@ -471,34 +485,29 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: "hsl(25, 30%, 20%)",
     marginBottom: 16,
   },
   menuItem: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "hsl(30, 40%, 95%)",
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "hsl(30, 25%, 88%)",
   },
   menuItemDestructive: {
-    backgroundColor: "hsl(0, 30%, 96%)",
-    borderColor: "hsl(0, 50%, 90%)",
+    // Applied dynamically
   },
   menuIconContainer: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "hsl(30, 50%, 97%)",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
   },
   menuIconContainerDestructive: {
-    backgroundColor: "hsl(0, 40%, 97%)",
+    // Applied dynamically
   },
   menuTextContainer: {
     flex: 1,
@@ -506,15 +515,13 @@ const styles = StyleSheet.create({
   menuTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "hsl(25, 30%, 20%)",
     marginBottom: 2,
   },
   menuTitleDestructive: {
-    color: "hsl(0, 70%, 55%)",
+    // Applied dynamically
   },
   menuSubtitle: {
     fontSize: 12,
-    color: "hsl(25, 15%, 50%)",
   },
   loadingContainer: {
     justifyContent: "center",
@@ -522,7 +529,6 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 16,
-    color: "hsl(0, 70%, 55%)",
   },
 });
 

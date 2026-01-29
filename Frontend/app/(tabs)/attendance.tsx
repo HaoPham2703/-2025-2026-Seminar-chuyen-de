@@ -27,7 +27,10 @@ import {
 } from 'lucide-react-native';
 import { getAttendanceHistory, type AttendanceRecord as ApiAttendanceRecord } from '@/src/services/attendanceService';
 import { getEmployeeProfile } from '@/src/services/employeeService';
+import LeaveRequestModal from '@/src/components/LeaveRequestModal';
+import AttendanceAdjustmentModal from '@/src/components/AttendanceAdjustmentModal';
 import { getAuthToken } from '@/src/services/api';
+import { useTheme } from '@/src/hooks/use-theme';
 
 interface AttendanceRecord {
   date: number;
@@ -407,6 +410,7 @@ const ContextMenu = ({
 };
 
 export default function AttendanceScreen() {
+  const { colors } = useTheme();
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [showYearPicker, setShowYearPicker] = useState(false);
@@ -434,6 +438,9 @@ export default function AttendanceScreen() {
   const [loading, setLoading] = useState(true);
   const [employeeId, setEmployeeId] = useState<string>("");
   const [isLoadingEmployeeId, setIsLoadingEmployeeId] = useState(false);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
   const monthScrollViewRef = useRef<any>(null);
 
@@ -672,20 +679,22 @@ export default function AttendanceScreen() {
   };
 
   const handleRegularize = (recordIndex: number) => {
-    // TODO: Implement regularize functionality
-    console.log('Regularize record:', records[recordIndex]);
-    // You can add navigation to a regularize form or show a modal
+    const record = records[recordIndex];
+    if (!record) return;
+    setSelectedDate(record.fullDate);
+    setShowAdjustmentModal(true);
   };
 
   const handleApplyLeave = (recordIndex: number) => {
-    // TODO: Implement apply leave functionality
-    console.log('Apply leave for record:', records[recordIndex]);
-    // You can add navigation to a leave application form or show a modal
+    const record = records[recordIndex];
+    if (!record) return;
+    setSelectedDate(record.fullDate);
+    setShowLeaveModal(true);
   };
 
   return (
     <FadeScreenWrapper>
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} edges={['top']}>
       <RefreshableScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -694,13 +703,13 @@ export default function AttendanceScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Chấm công</Text>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>Chấm công</Text>
           <Pressable
             style={styles.yearSelector}
             onPress={() => setShowYearPicker(true)}
           >
-            <Text style={styles.yearText}>{selectedYear}</Text>
-            <ChevronDown size={20} color="hsl(25, 30%, 20%)" />
+            <Text style={[styles.yearText, { color: colors.text }]}>{selectedYear}</Text>
+            <ChevronDown size={20} color={colors.text} />
           </Pressable>
         </View>
 
@@ -840,12 +849,12 @@ export default function AttendanceScreen() {
 
           {loading ? (
             <View style={styles.emptyState}>
-              <ActivityIndicator size="large" color="hsl(30, 55%, 55%)" />
-              <Text style={styles.emptyStateText}>Đang tải dữ liệu chấm công...</Text>
+              <ActivityIndicator size="large" color={colors.accent} />
+              <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>Đang tải dữ liệu chấm công...</Text>
             </View>
           ) : records.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyStateText}>Không tìm thấy dữ liệu chấm công</Text>
+              <Text style={[styles.emptyStateText, { color: colors.textSecondary }]}>Không tìm thấy dữ liệu chấm công</Text>
             </View>
           ) : (
             records.map((record, index) => (
@@ -867,7 +876,7 @@ export default function AttendanceScreen() {
                   style={styles.dailyLogMenu}
                   onPress={() => handleContextMenu(index)}
                 >
-                  <MoreVertical size={20} color="hsl(25, 15%, 50%)" />
+                  <MoreVertical size={20} color={colors.textSecondary} />
                 </Pressable>
               </View>
             ))
@@ -891,6 +900,20 @@ export default function AttendanceScreen() {
         onApplyLeave={() => handleApplyLeave(contextMenu.recordIndex)}
         position={contextMenu.position}
       />
+      <LeaveRequestModal
+        visible={showLeaveModal}
+        employeeId={employeeId}
+        date={selectedDate}
+        onClose={() => setShowLeaveModal(false)}
+        onSubmitted={loadAttendanceData}
+      />
+      <AttendanceAdjustmentModal
+        visible={showAdjustmentModal}
+        employeeId={employeeId}
+        date={selectedDate}
+        onClose={() => setShowAdjustmentModal(false)}
+        onSubmitted={loadAttendanceData}
+      />
     </SafeAreaView>
     </FadeScreenWrapper>
   );
@@ -899,7 +922,6 @@ export default function AttendanceScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'white',
   },
   scrollView: {
     flex: 1,
@@ -918,7 +940,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 28,
     fontWeight: '700',
-    color: 'hsl(25, 30%, 20%)',
   },
   yearSelector: {
     flexDirection: 'row',
@@ -927,12 +948,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: 'hsl(30, 40%, 95%)',
   },
   yearText: {
     fontSize: 16,
     fontWeight: '600',
-    color: 'hsl(25, 30%, 20%)',
   },
   monthNavigationContainer: {
     marginVertical: 16,

@@ -13,6 +13,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { X, Bell, Moon, Sun, Globe, Shield, Info } from 'lucide-react-native';
 import { useSettings } from '@/src/contexts/SettingsContext';
 import { AppSettings } from '@/src/contexts/SettingsContext';
+import { t, getLanguage } from '@/src/utils/i18n';
 
 interface SettingsScreenProps {
   visible: boolean;
@@ -20,27 +21,30 @@ interface SettingsScreenProps {
 }
 
 const SettingsScreen: React.FC<SettingsScreenProps> = ({ visible, onClose }) => {
-  const { settings, updateSettings, resetSettings } = useSettings();
+  const { settings, updateSettings, resetSettings, currentTheme } = useSettings();
   const [localSettings, setLocalSettings] = useState<AppSettings>(settings);
+  const [forceUpdate, setForceUpdate] = useState(0); // Force re-render when language changes
 
   useEffect(() => {
     if (visible) {
       setLocalSettings(settings);
+      setForceUpdate(prev => prev + 1); // Force re-render to update translations
     }
   }, [visible, settings]);
 
   const handleNotificationToggle = async (key: keyof AppSettings['notifications'], value: boolean) => {
-    const newSettings = {
-      ...localSettings,
-      notifications: {
-        ...localSettings.notifications,
-        [key]: value,
-      },
+    const newNotifications = {
+      ...localSettings.notifications,
+      [key]: value,
     };
-    setLocalSettings(newSettings);
+    // Optimistic update
+    setLocalSettings({
+      ...localSettings,
+      notifications: newNotifications,
+    });
     try {
-      await updateSettings({ notifications: newSettings.notifications });
-      // Không hiển thị alert để UX mượt hơn
+      await updateSettings({ notifications: newNotifications });
+      // useEffect will sync localSettings with settings from context automatically
     } catch (error) {
       Alert.alert('Lỗi', 'Không thể lưu cài đặt');
       setLocalSettings(settings); // Revert on error
@@ -48,14 +52,15 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ visible, onClose }) => 
   };
 
   const handleThemeChange = async (theme: 'light' | 'dark' | 'auto') => {
-    const newSettings = {
+    // Optimistic update
+    setLocalSettings({
       ...localSettings,
       theme,
-    };
-    setLocalSettings(newSettings);
+    });
     try {
       await updateSettings({ theme });
       // Theme sẽ được áp dụng tự động qua context
+      // useEffect will sync localSettings with settings from context automatically
     } catch (error) {
       Alert.alert('Lỗi', 'Không thể lưu cài đặt');
       setLocalSettings(settings); // Revert on error
@@ -63,14 +68,15 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ visible, onClose }) => 
   };
 
   const handleLanguageChange = async (language: 'vi' | 'en') => {
-    const newSettings = {
+    // Optimistic update
+    setLocalSettings({
       ...localSettings,
       language,
-    };
-    setLocalSettings(newSettings);
+    });
     try {
       await updateSettings({ language });
       // Language sẽ được áp dụng tự động qua context
+      // useEffect will sync localSettings with settings from context automatically
     } catch (error) {
       Alert.alert('Lỗi', 'Không thể lưu cài đặt');
       setLocalSettings(settings); // Revert on error
@@ -78,16 +84,18 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ visible, onClose }) => 
   };
 
   const handlePrivacyToggle = async (key: keyof AppSettings['privacy'], value: boolean) => {
-    const newSettings = {
-      ...localSettings,
-      privacy: {
-        ...localSettings.privacy,
-        [key]: value,
-      },
+    const newPrivacy = {
+      ...localSettings.privacy,
+      [key]: value,
     };
-    setLocalSettings(newSettings);
+    // Optimistic update
+    setLocalSettings({
+      ...localSettings,
+      privacy: newPrivacy,
+    });
     try {
-      await updateSettings({ privacy: newSettings.privacy });
+      await updateSettings({ privacy: newPrivacy });
+      // useEffect will sync localSettings with settings from context automatically
     } catch (error) {
       Alert.alert('Lỗi', 'Không thể lưu cài đặt');
       setLocalSettings(settings); // Revert on error
@@ -95,30 +103,55 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ visible, onClose }) => 
   };
 
   const handleResetSettings = () => {
+    const lang = getLanguage();
     Alert.alert(
-      'Đặt lại cài đặt',
-      'Bạn có chắc chắn muốn đặt lại tất cả cài đặt về mặc định?',
+      lang === 'vi' ? 'Đặt lại cài đặt' : 'Reset Settings',
+      lang === 'vi' 
+        ? 'Bạn có chắc chắn muốn đặt lại tất cả cài đặt về mặc định?'
+        : 'Are you sure you want to reset all settings to default?',
       [
         {
-          text: 'Hủy',
+          text: lang === 'vi' ? 'Hủy' : 'Cancel',
           style: 'cancel',
         },
         {
-          text: 'Đặt lại',
+          text: lang === 'vi' ? 'Đặt lại' : 'Reset',
           style: 'destructive',
           onPress: async () => {
             try {
               await resetSettings();
-              setLocalSettings(settings);
-              Alert.alert('Thành công', 'Đã đặt lại cài đặt về mặc định');
+              setForceUpdate(prev => prev + 1);
+              Alert.alert(
+                lang === 'vi' ? 'Thành công' : 'Success',
+                lang === 'vi' ? 'Đã đặt lại cài đặt về mặc định' : 'Settings have been reset to default'
+              );
             } catch (error) {
-              Alert.alert('Lỗi', 'Không thể đặt lại cài đặt');
+              Alert.alert(
+                lang === 'vi' ? 'Lỗi' : 'Error',
+                lang === 'vi' ? 'Không thể đặt lại cài đặt' : 'Failed to reset settings'
+              );
             }
           },
         },
       ]
     );
   };
+
+  // Get theme colors based on current theme
+  const getThemeColors = () => {
+    const isDark = currentTheme === 'dark';
+    return {
+      background: isDark ? 'hsl(25, 20%, 10%)' : 'hsl(30, 50%, 97%)',
+      text: isDark ? 'hsl(30, 50%, 95%)' : 'hsl(25, 30%, 20%)',
+      textSecondary: isDark ? 'hsl(30, 30%, 70%)' : 'hsl(25, 15%, 50%)',
+      card: isDark ? 'hsl(25, 25%, 15%)' : 'hsl(30, 40%, 95%)',
+      border: isDark ? 'hsl(30, 20%, 25%)' : 'hsl(30, 25%, 88%)',
+      accent: 'hsl(30, 55%, 55%)',
+      icon: isDark ? 'hsl(30, 50%, 80%)' : 'hsl(30, 55%, 55%)',
+    };
+  };
+
+  const themeColors = getThemeColors();
 
   return (
     <Modal
@@ -128,151 +161,165 @@ const SettingsScreen: React.FC<SettingsScreenProps> = ({ visible, onClose }) => 
       onRequestClose={onClose}
     >
       <View style={styles.modalOverlay}>
-        <View style={styles.modalContent}>
+        <View style={[styles.modalContent, { backgroundColor: themeColors.background }]}>
           {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Cài đặt</Text>
+          <View style={[styles.header, { borderBottomColor: themeColors.border }]}>
+            <Text style={[styles.headerTitle, { color: themeColors.text }]}>{t('settings.title')}</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <X size={24} color="hsl(25, 30%, 20%)" />
+              <X size={24} color={themeColors.text} />
             </TouchableOpacity>
           </View>
 
           <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
             {/* Notifications Section */}
-            <Animated.View entering={FadeInDown.delay(50).duration(300)} style={styles.section}>
+            <Animated.View entering={FadeInDown.delay(50).duration(300)} style={[styles.section, { borderBottomColor: themeColors.border }]}>
               <View style={styles.sectionHeader}>
-                <Bell size={20} color="hsl(30, 55%, 55%)" />
-                <Text style={styles.sectionTitle}>Thông báo</Text>
+                <Bell size={20} color={themeColors.icon} />
+                <Text style={[styles.sectionTitle, { color: themeColors.text }]}>{t('settings.notifications')}</Text>
               </View>
 
               <SettingItem
-                title="Bật thông báo"
-                subtitle="Nhận thông báo từ ứng dụng"
+                title={t('settings.enableNotifications')}
+                subtitle={getLanguage() === 'vi' ? 'Nhận thông báo từ ứng dụng' : 'Receive notifications from the app'}
                 value={localSettings.notifications.enabled}
                 onValueChange={(value) => handleNotificationToggle('enabled', value)}
                 delay={100}
+                themeColors={themeColors}
               />
 
               {localSettings.notifications.enabled && (
                 <>
                   <SettingItem
-                    title="Nhắc nhở chấm công"
-                    subtitle="Nhắc nhở khi đến giờ chấm công"
+                    title={t('settings.clockInReminder')}
+                    subtitle={getLanguage() === 'vi' ? 'Nhắc nhở khi đến giờ chấm công' : 'Remind when it\'s time to clock in'}
                     value={localSettings.notifications.clockInReminder}
                     onValueChange={(value) => handleNotificationToggle('clockInReminder', value)}
                     delay={150}
                     indent={true}
+                    themeColors={themeColors}
                   />
 
                   <SettingItem
-                    title="Tóm tắt chấm công"
-                    subtitle="Gửi tóm tắt chấm công hàng ngày"
+                    title={t('settings.attendanceSummary')}
+                    subtitle={getLanguage() === 'vi' ? 'Gửi tóm tắt chấm công hàng ngày' : 'Send daily attendance summary'}
                     value={localSettings.notifications.attendanceSummary}
                     onValueChange={(value) => handleNotificationToggle('attendanceSummary', value)}
                     delay={200}
                     indent={true}
+                    themeColors={themeColors}
                   />
                 </>
               )}
             </Animated.View>
 
             {/* Theme Section */}
-            <Animated.View entering={FadeInDown.delay(250).duration(300)} style={styles.section}>
+            <Animated.View entering={FadeInDown.delay(250).duration(300)} style={[styles.section, { borderBottomColor: themeColors.border }]}>
               <View style={styles.sectionHeader}>
                 {localSettings.theme === 'dark' ? (
-                  <Moon size={20} color="hsl(30, 55%, 55%)" />
+                  <Moon size={20} color={themeColors.icon} />
                 ) : (
-                  <Sun size={20} color="hsl(30, 55%, 55%)" />
+                  <Sun size={20} color={themeColors.icon} />
                 )}
-                <Text style={styles.sectionTitle}>Giao diện</Text>
+                <Text style={[styles.sectionTitle, { color: themeColors.text }]}>{t('settings.theme')}</Text>
               </View>
 
               <ThemeOption
-                title="Sáng"
-                subtitle="Giao diện sáng"
+                title={t('settings.light')}
+                subtitle={getLanguage() === 'vi' ? 'Giao diện sáng' : 'Light interface'}
                 selected={localSettings.theme === 'light'}
                 onPress={() => handleThemeChange('light')}
                 delay={300}
+                themeColors={themeColors}
               />
 
               <ThemeOption
-                title="Tối"
-                subtitle="Giao diện tối"
+                title={t('settings.dark')}
+                subtitle={getLanguage() === 'vi' ? 'Giao diện tối' : 'Dark interface'}
                 selected={localSettings.theme === 'dark'}
                 onPress={() => handleThemeChange('dark')}
                 delay={350}
+                themeColors={themeColors}
               />
 
               <ThemeOption
-                title="Tự động"
-                subtitle="Theo cài đặt hệ thống"
+                title={t('settings.auto')}
+                subtitle={getLanguage() === 'vi' ? 'Theo cài đặt hệ thống' : 'Follow system settings'}
                 selected={localSettings.theme === 'auto'}
                 onPress={() => handleThemeChange('auto')}
                 delay={400}
+                themeColors={themeColors}
               />
             </Animated.View>
 
             {/* Language Section */}
-            <Animated.View entering={FadeInDown.delay(450).duration(300)} style={styles.section}>
+            <Animated.View entering={FadeInDown.delay(450).duration(300)} style={[styles.section, { borderBottomColor: themeColors.border }]}>
               <View style={styles.sectionHeader}>
-                <Globe size={20} color="hsl(30, 55%, 55%)" />
-                <Text style={styles.sectionTitle}>Ngôn ngữ</Text>
+                <Globe size={20} color={themeColors.icon} />
+                <Text style={[styles.sectionTitle, { color: themeColors.text }]}>{t('settings.language')}</Text>
               </View>
 
               <LanguageOption
-                title="Tiếng Việt"
+                title={t('settings.vietnamese')}
                 subtitle="Vietnamese"
                 selected={localSettings.language === 'vi'}
                 onPress={() => handleLanguageChange('vi')}
                 delay={500}
+                themeColors={themeColors}
               />
 
               <LanguageOption
-                title="English"
-                subtitle="Tiếng Anh"
+                title={t('settings.english')}
+                subtitle={getLanguage() === 'vi' ? 'Tiếng Anh' : 'English'}
                 selected={localSettings.language === 'en'}
                 onPress={() => handleLanguageChange('en')}
                 delay={550}
+                themeColors={themeColors}
               />
             </Animated.View>
 
             {/* Privacy Section */}
-            <Animated.View entering={FadeInDown.delay(600).duration(300)} style={styles.section}>
+            <Animated.View entering={FadeInDown.delay(600).duration(300)} style={[styles.section, { borderBottomColor: themeColors.border }]}>
               <View style={styles.sectionHeader}>
-                <Shield size={20} color="hsl(30, 55%, 55%)" />
-                <Text style={styles.sectionTitle}>Quyền riêng tư</Text>
+                <Shield size={20} color={themeColors.icon} />
+                <Text style={[styles.sectionTitle, { color: themeColors.text }]}>{t('settings.privacy')}</Text>
               </View>
 
               <SettingItem
-                title="Hiển thị email"
-                subtitle="Cho phép người khác xem email của bạn"
+                title={t('settings.showEmail')}
+                subtitle={getLanguage() === 'vi' ? 'Cho phép người khác xem email của bạn' : 'Allow others to view your email'}
                 value={localSettings.privacy.showEmail}
                 onValueChange={(value) => handlePrivacyToggle('showEmail', value)}
                 delay={650}
+                themeColors={themeColors}
               />
 
               <SettingItem
-                title="Hiển thị số điện thoại"
-                subtitle="Cho phép người khác xem số điện thoại của bạn"
+                title={t('settings.showPhone')}
+                subtitle={getLanguage() === 'vi' ? 'Cho phép người khác xem số điện thoại của bạn' : 'Allow others to view your phone number'}
                 value={localSettings.privacy.showPhone}
                 onValueChange={(value) => handlePrivacyToggle('showPhone', value)}
                 delay={700}
+                themeColors={themeColors}
               />
             </Animated.View>
 
             {/* About Section */}
-            <Animated.View entering={FadeInDown.delay(750).duration(300)} style={styles.section}>
+            <Animated.View entering={FadeInDown.delay(750).duration(300)} style={[styles.section, { borderBottomColor: themeColors.border }]}>
               <View style={styles.sectionHeader}>
-                <Info size={20} color="hsl(30, 55%, 55%)" />
-                <Text style={styles.sectionTitle}>Khác</Text>
+                <Info size={20} color={themeColors.icon} />
+                <Text style={[styles.sectionTitle, { color: themeColors.text }]}>
+                  {getLanguage() === 'vi' ? 'Khác' : 'Other'}
+                </Text>
               </View>
 
               <TouchableOpacity
-                style={styles.resetButton}
+                style={[styles.resetButton, { backgroundColor: currentTheme === 'dark' ? 'hsl(0, 30%, 20%)' : 'hsl(0, 30%, 96%)', borderColor: currentTheme === 'dark' ? 'hsl(0, 50%, 30%)' : 'hsl(0, 50%, 90%)' }]}
                 onPress={handleResetSettings}
                 activeOpacity={0.7}
               >
-                <Text style={styles.resetButtonText}>Đặt lại cài đặt về mặc định</Text>
+                <Text style={[styles.resetButtonText, { color: currentTheme === 'dark' ? 'hsl(0, 70%, 70%)' : 'hsl(0, 70%, 55%)' }]}>
+                  {t('settings.reset')}
+                </Text>
               </TouchableOpacity>
             </Animated.View>
           </ScrollView>
@@ -289,6 +336,15 @@ interface SettingItemProps {
   onValueChange: (value: boolean) => void;
   delay?: number;
   indent?: boolean;
+  themeColors?: {
+    background: string;
+    text: string;
+    textSecondary: string;
+    card: string;
+    border: string;
+    accent: string;
+    icon: string;
+  };
 }
 
 const SettingItem: React.FC<SettingItemProps> = ({
@@ -298,18 +354,29 @@ const SettingItem: React.FC<SettingItemProps> = ({
   onValueChange,
   delay = 0,
   indent = false,
+  themeColors,
 }) => {
+  const colors = themeColors || {
+    background: 'hsl(30, 50%, 97%)',
+    text: 'hsl(25, 30%, 20%)',
+    textSecondary: 'hsl(25, 15%, 50%)',
+    card: 'hsl(30, 40%, 95%)',
+    border: 'hsl(30, 25%, 88%)',
+    accent: 'hsl(30, 55%, 55%)',
+    icon: 'hsl(30, 55%, 55%)',
+  };
+
   return (
     <Animated.View entering={FadeInDown.delay(delay).duration(300)}>
-      <View style={[styles.settingItem, indent && styles.settingItemIndent]}>
+      <View style={[styles.settingItem, indent && styles.settingItemIndent, { backgroundColor: colors.card }]}>
         <View style={styles.settingTextContainer}>
-          <Text style={styles.settingTitle}>{title}</Text>
-          {subtitle && <Text style={styles.settingSubtitle}>{subtitle}</Text>}
+          <Text style={[styles.settingTitle, { color: colors.text }]}>{title}</Text>
+          {subtitle && <Text style={[styles.settingSubtitle, { color: colors.textSecondary }]}>{subtitle}</Text>}
         </View>
         <Switch
           value={value}
           onValueChange={onValueChange}
-          trackColor={{ false: 'hsl(30, 25%, 88%)', true: 'hsl(30, 55%, 55%)' }}
+          trackColor={{ false: colors.border, true: colors.accent }}
           thumbColor={value ? '#FFF' : '#f4f3f4'}
         />
       </View>
@@ -323,24 +390,47 @@ interface ThemeOptionProps {
   selected: boolean;
   onPress: () => void;
   delay?: number;
+  themeColors?: {
+    background: string;
+    text: string;
+    textSecondary: string;
+    card: string;
+    border: string;
+    accent: string;
+    icon: string;
+  };
 }
 
-const ThemeOption: React.FC<ThemeOptionProps> = ({ title, subtitle, selected, onPress, delay = 0 }) => {
+const ThemeOption: React.FC<ThemeOptionProps> = ({ title, subtitle, selected, onPress, delay = 0, themeColors }) => {
+  const colors = themeColors || {
+    background: 'hsl(30, 50%, 97%)',
+    text: 'hsl(25, 30%, 20%)',
+    textSecondary: 'hsl(25, 15%, 50%)',
+    card: 'hsl(30, 40%, 95%)',
+    border: 'hsl(30, 25%, 88%)',
+    accent: 'hsl(30, 55%, 55%)',
+    icon: 'hsl(30, 55%, 55%)',
+  };
+
   return (
     <Animated.View entering={FadeInDown.delay(delay).duration(300)}>
       <TouchableOpacity
-        style={[styles.optionItem, selected && styles.optionItemSelected]}
+        style={[
+          styles.optionItem,
+          { backgroundColor: colors.card, borderColor: selected ? colors.accent : 'transparent' },
+          selected && { backgroundColor: colors.background }
+        ]}
         onPress={onPress}
         activeOpacity={0.7}
       >
         <View style={styles.optionTextContainer}>
-          <Text style={[styles.optionTitle, selected && styles.optionTitleSelected]}>
+          <Text style={[styles.optionTitle, { color: selected ? colors.accent : colors.text }]}>
             {title}
           </Text>
-          <Text style={styles.optionSubtitle}>{subtitle}</Text>
+          <Text style={[styles.optionSubtitle, { color: colors.textSecondary }]}>{subtitle}</Text>
         </View>
         {selected && (
-          <View style={styles.selectedIndicator}>
+          <View style={[styles.selectedIndicator, { backgroundColor: colors.accent }]}>
             <View style={styles.selectedDot} />
           </View>
         )}
@@ -355,24 +445,47 @@ interface LanguageOptionProps {
   selected: boolean;
   onPress: () => void;
   delay?: number;
+  themeColors?: {
+    background: string;
+    text: string;
+    textSecondary: string;
+    card: string;
+    border: string;
+    accent: string;
+    icon: string;
+  };
 }
 
-const LanguageOption: React.FC<LanguageOptionProps> = ({ title, subtitle, selected, onPress, delay = 0 }) => {
+const LanguageOption: React.FC<LanguageOptionProps> = ({ title, subtitle, selected, onPress, delay = 0, themeColors }) => {
+  const colors = themeColors || {
+    background: 'hsl(30, 50%, 97%)',
+    text: 'hsl(25, 30%, 20%)',
+    textSecondary: 'hsl(25, 15%, 50%)',
+    card: 'hsl(30, 40%, 95%)',
+    border: 'hsl(30, 25%, 88%)',
+    accent: 'hsl(30, 55%, 55%)',
+    icon: 'hsl(30, 55%, 55%)',
+  };
+
   return (
     <Animated.View entering={FadeInDown.delay(delay).duration(300)}>
       <TouchableOpacity
-        style={[styles.optionItem, selected && styles.optionItemSelected]}
+        style={[
+          styles.optionItem,
+          { backgroundColor: colors.card, borderColor: selected ? colors.accent : 'transparent' },
+          selected && { backgroundColor: colors.background }
+        ]}
         onPress={onPress}
         activeOpacity={0.7}
       >
         <View style={styles.optionTextContainer}>
-          <Text style={[styles.optionTitle, selected && styles.optionTitleSelected]}>
+          <Text style={[styles.optionTitle, { color: selected ? colors.accent : colors.text }]}>
             {title}
           </Text>
-          <Text style={styles.optionSubtitle}>{subtitle}</Text>
+          <Text style={[styles.optionSubtitle, { color: colors.textSecondary }]}>{subtitle}</Text>
         </View>
         {selected && (
-          <View style={styles.selectedIndicator}>
+          <View style={[styles.selectedIndicator, { backgroundColor: colors.accent }]}>
             <View style={styles.selectedDot} />
           </View>
         )}
@@ -388,7 +501,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: 'hsl(30, 50%, 97%)',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '90%',
@@ -399,12 +511,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: 'hsl(30, 25%, 88%)',
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: 'hsl(25, 30%, 20%)',
   },
   closeButton: {
     padding: 4,
@@ -415,7 +525,6 @@ const styles = StyleSheet.create({
   section: {
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: 'hsl(30, 25%, 88%)',
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -426,7 +535,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: 'hsl(25, 30%, 20%)',
   },
   settingItem: {
     flexDirection: 'row',
@@ -434,7 +542,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 16,
-    backgroundColor: 'hsl(30, 40%, 95%)',
     borderRadius: 12,
     marginBottom: 8,
   },
@@ -448,12 +555,10 @@ const styles = StyleSheet.create({
   settingTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: 'hsl(25, 30%, 20%)',
     marginBottom: 2,
   },
   settingSubtitle: {
     fontSize: 12,
-    color: 'hsl(25, 15%, 50%)',
   },
   optionItem: {
     flexDirection: 'row',
@@ -461,15 +566,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 16,
     paddingHorizontal: 16,
-    backgroundColor: 'hsl(30, 40%, 95%)',
     borderRadius: 12,
     marginBottom: 8,
     borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  optionItemSelected: {
-    backgroundColor: 'hsl(30, 50%, 97%)',
-    borderColor: 'hsl(30, 55%, 55%)',
   },
   optionTextContainer: {
     flex: 1,
@@ -477,21 +576,15 @@ const styles = StyleSheet.create({
   optionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: 'hsl(25, 30%, 20%)',
     marginBottom: 2,
-  },
-  optionTitleSelected: {
-    color: 'hsl(30, 55%, 55%)',
   },
   optionSubtitle: {
     fontSize: 12,
-    color: 'hsl(25, 15%, 50%)',
   },
   selectedIndicator: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: 'hsl(30, 55%, 55%)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -504,16 +597,13 @@ const styles = StyleSheet.create({
   resetButton: {
     paddingVertical: 16,
     paddingHorizontal: 16,
-    backgroundColor: 'hsl(0, 30%, 96%)',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'hsl(0, 50%, 90%)',
     alignItems: 'center',
   },
   resetButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: 'hsl(0, 70%, 55%)',
   },
 });
 
