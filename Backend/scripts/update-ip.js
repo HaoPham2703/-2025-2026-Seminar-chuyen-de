@@ -15,6 +15,7 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const projectRoot = path.join(__dirname, '..', '..');
 
 /**
  * Lấy IP address từ network interfaces
@@ -48,15 +49,16 @@ function getLocalIP() {
 }
 
 /**
- * Cập nhật file .env với IP mới
+ * Cập nhật file .env với IP mới (tự tạo file nếu chưa tồn tại)
  */
-function updateEnvFile(ipAddress) {
-  const envPath = path.join(__dirname, '..', '.env');
-  
+function updateEnvFileAtPath(envPath, ipAddress, { createIfMissing }) {
   if (!fs.existsSync(envPath)) {
-    console.error('❌ File .env không tồn tại!');
-    console.log('💡 Tạo file .env từ .env.example hoặc tạo thủ công.');
-    process.exit(1);
+    if (!createIfMissing) {
+      console.warn(`⚠️  Bỏ qua vì không tìm thấy file: ${envPath}`);
+      return;
+    }
+    fs.writeFileSync(envPath, '', 'utf8');
+    console.log(`🆕 Đã tạo file .env mới: ${envPath}`);
   }
 
   // Đọc file .env
@@ -98,10 +100,16 @@ function main() {
   console.log(`✅ Tìm thấy IP: ${ipAddress}`);
   console.log(`📡 API URL sẽ là: http://${ipAddress}:3000/api\n`);
   
-  updateEnvFile(ipAddress);
+  // Frontend env (Expo) - đây mới là nơi EXPO_PUBLIC_API_URL có tác dụng
+  const frontendEnvPath = path.join(projectRoot, 'Frontend', '.env');
+  updateEnvFileAtPath(frontendEnvPath, ipAddress, { createIfMissing: true });
+
+  // Backend env - có thể không cần EXPO_PUBLIC_API_URL, nhưng giữ để tương thích cũ (không tạo mới nếu thiếu)
+  const backendEnvPath = path.join(projectRoot, 'Backend', '.env');
+  updateEnvFileAtPath(backendEnvPath, ipAddress, { createIfMissing: false });
   
   console.log('\n✨ Hoàn tất! Bạn có thể chạy server với IP mới.');
-  console.log('💡 Tip: Chạy "npm run dev" để start server.');
+  console.log('💡 Tip: Sau khi cập nhật Frontend/.env, hãy restart Expo dev server để nhận env mới.');
 }
 
 // Chạy script

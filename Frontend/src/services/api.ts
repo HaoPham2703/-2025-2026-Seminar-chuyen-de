@@ -18,16 +18,17 @@ const getApiBaseUrl = () => {
     return 'http://localhost:3000/api';
   }
 
-  // Android Emulator: localhost của emulator != localhost của máy host
-  if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:3000/api';
-  }
-
   // Cố gắng auto-detect IP từ Expo dev server (hostUri dạng "192.168.x.x:19000")
   const hostUri = Constants.expoConfig?.hostUri || Constants.hostUri;
   const host = hostUri?.split(':')?.[0];
   if (host && /^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
     return `http://${host}:3000/api`;
+  }
+
+  // Android Emulator: localhost của emulator != localhost của máy host
+  // (chỉ dùng khi không detect được hostUri và cũng không có EXPO_PUBLIC_API_URL)
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:3000/api';
   }
 
   // Fallback: yêu cầu cấu hình EXPO_PUBLIC_API_URL khi chạy trên device thật
@@ -39,6 +40,7 @@ const getApiBaseUrl = () => {
 };
 
 const API_BASE_URL = getApiBaseUrl();
+console.log('[api] API_BASE_URL:', API_BASE_URL);
 
 export interface ApiResponse<T = any> {
   success: boolean;
