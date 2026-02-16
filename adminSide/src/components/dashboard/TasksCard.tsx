@@ -1,6 +1,7 @@
 import { Plus, Check } from 'lucide-react'
 import { useState } from 'react'
 import { t } from '../../utils/i18n'
+import AddTaskModal from './AddTaskModal'
 
 interface Task {
   id: string
@@ -57,8 +58,26 @@ export default function TasksCard() {
   const handleAddTask = () => {
     console.log('🔵 TasksCard: Add task clicked')
     setShowAddModal(true)
-    // TODO: Implement add task modal
-    alert('Add Task feature coming soon!')
+  }
+
+  const handleAddNewTask = (newTask: {
+    title: string
+    description: string
+    tag?: { label: string; color: string }
+    dueDate: string
+  }) => {
+    const task: Task = {
+      id: Date.now().toString(),
+      title: newTask.title,
+      description: newTask.description,
+      status: 'Pending',
+      tag: newTask.tag,
+      dueDate: newTask.dueDate,
+      dueDateColor: newTask.dueDate === 'Today' ? 'text-orange-600' : 
+                    newTask.dueDate === 'Tomorrow' ? 'text-blue-600' : 
+                    'text-gray-600',
+    }
+    setTaskList((prev) => [task, ...prev])
   }
 
   return (
@@ -75,7 +94,7 @@ export default function TasksCard() {
         </button>
       </div>
 
-      <div className="space-y-4">
+      <div className="max-h-96 overflow-y-auto space-y-4 pr-2">
         {taskList.map((task) => (
           <div key={task.id} className="flex items-start gap-3">
             <button 
@@ -114,6 +133,12 @@ export default function TasksCard() {
           </div>
         ))}
       </div>
+
+      <AddTaskModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onAdd={handleAddNewTask}
+      />
     </div>
   )
 }

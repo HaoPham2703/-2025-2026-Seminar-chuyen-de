@@ -50,6 +50,65 @@
 
 ## You have learned in the past
 
+### Lesson 26: Fix buttons không tương tác được trong Dashboard (React Web)
+- **Vấn đề**: Các buttons trong Dashboard (See All, Add, Checkbox, Calendar navigation, etc.) không hoạt động khi click
+- **Root cause**: 
+  - Thiếu `type="button"` → buttons trong form có thể trigger form submission
+  - Thiếu `cursor-pointer` → không rõ ràng là có thể click
+  - Event propagation có thể bị chặn
+- **Solution**:
+  - **Thêm `type="button"`** cho tất cả buttons để tránh form submission không mong muốn
+  - **Thêm `cursor-pointer`** để hiển thị con trỏ chuột khi hover
+  - **Thêm `e.stopPropagation()`** cho checkbox trong TasksCard để tránh event bubbling
+  - **Thêm `console.log` với emoji 🔵** để debug dễ dàng
+  - **Sử dụng `useNavigate()` từ react-router-dom** cho navigation buttons
+  - **State management** với `useState` cho interactive elements (tabs, search, calendar)
+- **Best practices**:
+  - Luôn thêm `type="button"` cho buttons không phải submit button
+  - Thêm `cursor-pointer` cho tất cả clickable elements
+  - Sử dụng console.log với emoji để dễ debug
+  - Test buttons trong browser console để xem handlers có được gọi không
+- **Files updated**:
+  - `adminSide/src/components/dashboard/*.tsx` - Tất cả dashboard cards
+  - `adminSide/src/components/Header.tsx` - Header buttons
+
+### Lesson 25: Tích hợp i18n (English/Vietnamese) vào adminSide
+- **Mục đích**: Hỗ trợ đa ngôn ngữ cho admin dashboard
+- **Giải pháp**:
+  - Tạo `src/utils/i18n.ts` với translations cho cả English và Vietnamese
+  - Tạo `LanguageContext` để quản lý ngôn ngữ hiện tại và lưu vào localStorage
+  - Thêm language switcher (Globe icon) vào Header
+  - Cập nhật tất cả components (Header, Sidebar, Login, Signup) để sử dụng `t()` function
+  - Translations bao gồm: navigation, common terms, auth pages, dashboard cards
+- **Cách sử dụng**: Click vào Globe icon trong Header để chuyển đổi giữa English và Vietnamese
+- **Lưu ý**: Language preference được lưu trong localStorage và tự động load khi reload page
+
+### Lesson 24: Tích hợp Swagger/OpenAPI vào Backend
+- **Mục đích**: Tạo API documentation tự động với Swagger UI
+- **Giải pháp**:
+  - Cài đặt `swagger-jsdoc` và `swagger-ui-express`
+  - Tạo file `Backend/config/swagger.js` với cấu hình OpenAPI 3.0
+  - Tích hợp Swagger UI vào `server.js` tại route `/api-docs`
+  - Thêm JSDoc comments vào các routes để tự động generate documentation
+  - Định nghĩa schemas trong swagger config (User, LoginRequest, LoginResponse, Error, Success)
+  - Thêm security scheme cho JWT Bearer authentication
+- **Cách sử dụng**: Truy cập `http://localhost:3000/api-docs` để xem API documentation
+- **Lưu ý**: Cần thêm JSDoc comments cho tất cả endpoints để có documentation đầy đủ
+
+### Bug 23: Tailwind CSS v4 PostCSS Plugin Error
+- **Error description**: `[postcss] It looks like you're trying to use tailwindcss directly as a PostCSS plugin. The PostCSS plugin has moved to a separate package`
+- **Root cause**: Tailwind CSS v4 đã tách PostCSS plugin ra package riêng `@tailwindcss/postcss`
+- **Solution**: 
+  - Cài đặt `@tailwindcss/postcss`: `npm install -D @tailwindcss/postcss`
+  - Cập nhật `postcss.config.js`: thay `tailwindcss: {}` thành `'@tailwindcss/postcss': {}`
+  - Vẫn giữ `@import "tailwindcss"` trong CSS file
+
+### Lesson 22: Test nhanh API trên Windows (tránh lỗi quote PowerShell)
+- **Triệu chứng**: PowerShell `Invoke-RestMethod` dễ lỗi parse/quote khi chạy inline command dài (đặc biệt có `$`, `@`, JSON).
+- **Giải pháp**: Dùng Node fetch để test API nhanh, in ra `status` + response body.
+  - Ví dụ:
+    - `node -e "(async()=>{ const res=await fetch('http://localhost:3000/api/auth/signup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({firstName:'Test',lastName:'User',email:'test'+Date.now()+'@abccafe.com',phone:'0901234567',password:'Abcdefg1'})}); console.log('status',res.status); console.log(await res.text()); })().catch(console.error)"`.
+
 ### Lesson 19: Hiển thị QR trong Expo (Employee QR)
 - **Triệu chứng**: Màn QR chỉ hiện fallback text (không render QR).
 - **Giải pháp**:
@@ -468,6 +527,37 @@
 
 # Scratchpad
 
+## Nhiệm vụ hiện tại: Admin Dashboard (adminSide)
+
+### Mô tả:
+Dashboard quản lý nhân sự cho admin với đầy đủ chức năng tương tác. Đã hoàn thành:
+- ✅ Layout: Sidebar navigation + Header với profile, search, notifications
+- ✅ Dashboard cards: Attendance Report, Tasks, Schedule, Leave Requests, Internship
+- ✅ API integration: Load dữ liệu thực tế từ Backend MongoDB
+- ✅ Authentication: Login/Signup với AuthContext
+- ✅ i18n: Hỗ trợ English/Vietnamese với language switcher
+- ✅ Interactive buttons: Tất cả buttons đã có handlers và hoạt động
+- ✅ **Attendance Page**: Hiển thị attendance records với table, filter theo ngày, statistics cards
+- ✅ **Schedule Page**: Weekly view với lịch làm việc của nhân viên, navigation tuần
+- ✅ **Departments Page**: Quản lý phòng ban, group employees by department, statistics
+- ✅ **Reports Page**: Thống kê tổng hợp từ attendance, employees, leaveRequests với date range filter
+- ✅ **Add Task Modal**: Modal để thêm task mới vào TasksCard với form validation
+
+### Công nghệ:
+- **Frontend**: React + Vite + TypeScript + Tailwind CSS v4
+- **Backend**: Node.js + Express + MongoDB (shared với Frontend)
+- **Routing**: React Router v6
+- **State**: React Context API (AuthContext, LanguageContext)
+
+### Tasks tiếp theo:
+[X] Kiểm tra cấu trúc và API endpoints hiện có
+[X] Implement Attendance page (đã có API `/admin/attendance/today`)
+[X] Implement Schedule page (weekly view với employees)
+[X] Implement Departments page (group employees by department)
+[X] Implement Reports page (tổng hợp data từ attendance, employees, leaveRequests)
+[ ] Implement modals: Add Task, Create Request (nếu cần)
+[ ] Tích hợp thêm API endpoints cho Schedule và Departments nếu cần
+
 ## Project Overview
 
 ### Cấu trúc Project:
@@ -536,36 +626,29 @@ codeZoneMobile/
 16. ✅ **Leave & Adjustments (Employee)** - Xin nghỉ, điều chỉnh chấm công từ tab Attendance, xem lịch sử yêu cầu ở tab Resources
 17. ✅ **Employee QR** - Màn “Mã QR của tôi” trong Profile hiển thị QR cá nhân từ backend
 
-## Nhiệm vụ tiếp theo
+## Completed Features (Đã hoàn thành)
 
-### Notification System với WebSocket/Socket.IO (Real-time)
-[X] Cài đặt dependencies: socket.io (Backend) và socket.io-client (Frontend)
-[X] Tạo database schema cho notifications collection và indexes
-[X] Setup Socket.IO server trong Backend với authentication middleware
-[X] Tạo Backend routes cho notifications (send, get, mark as read, delete)
-[X] Tạo NotificationContext với Socket.IO client và real-time updates
-[X] Tạo NotificationService cho API calls
-[X] Tạo UI components: NotificationCenter, NotificationItem, NotificationBadge
-[X] Tích hợp NotificationBadge vào Profile screen và tab navigation
-[X] Sửa Updates tab để hiển thị notifications trực tiếp (không dùng Modal)
-[X] Tạo Notification Detail Page với dynamic route `/notification/[id]`
-[X] Sửa logic mark as read để refresh notifications từ server
-[X] Sửa logic mark all as read để refresh notifications từ server
-[X] Sửa logic mark as read: không xóa recipient, chỉ cập nhật read: true
-[X] Thêm 2 tab: "Chưa đọc" và "Đã đọc" với query support
-[X] Thêm pull-to-refresh functionality
-[X] Sửa backend query để hỗ trợ filter theo unreadOnly=true/false
-[X] Sửa unreadCount calculation để tính từ database (tất cả notifications)
-[ ] Test real-time notifications: admin gửi → employee nhận ngay lập tức
+### Frontend (Mobile - React Native + Expo)
+- ✅ Authentication: Login/Signup với validation
+- ✅ Home Screen: Clock in/out, attendance status
+- ✅ Attendance Screen: History với calendar view
+- ✅ Profile Screen: Employee info, statistics, QR code
+- ✅ Settings: Theme (dark/light), Language (vi/en), Notifications
+- ✅ Notifications: Real-time với Socket.IO, 2 tabs (Chưa đọc/Đã đọc)
+- ✅ Leave Requests & Adjustments: Xin nghỉ, điều chỉnh chấm công
 
-### Leave Requests, Attendance Adjustments & Employee QR (Mobile Employee)
-[X] Phân tích API hiện có và thiết kế/bổ sung endpoints cho LeaveRequests & AttendanceAdjustments (Backend)
-[X] Tạo `leaveService.ts` và mở rộng `employeeService.ts` cho QR code (Frontend services)
-[X] Tạo UI xin nghỉ & điều chỉnh công (modals + gắn với context menu Attendance) và màn danh sách yêu cầu
-[X] Tạo UI QR cá nhân cho nhân viên và tích hợp vào Profile
-[X] Viết mô tả (ngắn gọn) vào scratchpad + liệt kê kịch bản test end-to-end cho các luồng mới
+### Backend (Node.js + Express + MongoDB)
+- ✅ Multi-tenant architecture với tenant isolation
+- ✅ JWT authentication
+- ✅ API endpoints: Auth, Attendance, Employees, Notifications, Leave Requests
+- ✅ Swagger/OpenAPI documentation tại `/api-docs`
+- ✅ Socket.IO cho real-time notifications
 
-- Kịch bản test đề xuất:
-  - Nhân viên vào tab Attendance, mở menu ngày bất kỳ → chọn \"Xin nghỉ phép\" → gửi lý do → kiểm tra xuất hiện trong tab Resources mục \"Yêu cầu nghỉ phép\" với trạng thái PENDING.
-  - Nhân viên vào tab Attendance, mở menu ngày bất kỳ → chọn \"Điều chỉnh\" → gửi lý do → kiểm tra xuất hiện trong tab Resources mục \"Yêu cầu điều chỉnh chấm công\" với trạng thái PENDING.
-  - Từ tab Profile, chọn \"Mã QR của tôi\" → kiểm tra QR (hoặc fallback text) hiển thị cùng tên và mã nhân viên; đóng/mở lại nhiều lần không lỗi.
+### Admin Dashboard (React Web)
+- ✅ Layout: Sidebar + Header với full navigation
+- ✅ Dashboard: 5 cards với data từ MongoDB
+- ✅ Authentication: Login/Signup với AuthContext
+- ✅ i18n: English/Vietnamese support
+- ✅ Interactive buttons: Tất cả buttons đã hoạt động
+- ✅ **Pages**: Attendance, Schedule, Departments, Reports đã được implement đầy đủ
+- ✅ **Modals**: Add Task modal với form validation

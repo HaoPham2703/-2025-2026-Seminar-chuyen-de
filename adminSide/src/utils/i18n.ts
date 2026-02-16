@@ -297,6 +297,176 @@ const translations: Translations = {
     vi: 'Hủy',
     en: 'Cancel',
   },
+  'common.refresh': {
+    vi: 'Làm mới',
+    en: 'Refresh',
+  },
+  'common.total': {
+    vi: 'Tổng cộng',
+    en: 'Total',
+  },
+
+  // Attendance
+  'attendance.employee': {
+    vi: 'Nhân viên',
+    en: 'Employee',
+  },
+  'attendance.clockIn': {
+    vi: 'Giờ vào',
+    en: 'Clock In',
+  },
+  'attendance.clockOut': {
+    vi: 'Giờ ra',
+    en: 'Clock Out',
+  },
+  'attendance.workHours': {
+    vi: 'Giờ làm việc',
+    en: 'Work Hours',
+  },
+  'attendance.status': {
+    vi: 'Trạng thái',
+    en: 'Status',
+  },
+  'attendance.noRecords': {
+    vi: 'Không có bản ghi chấm công',
+    en: 'No attendance records found',
+  },
+
+  // Schedule
+  'schedule.weeklyView': {
+    vi: 'Xem lịch theo tuần',
+    en: 'Weekly Schedule View',
+  },
+  'schedule.default': {
+    vi: 'Mặc định',
+    en: 'Default',
+  },
+  'schedule.info': {
+    vi: 'Thông tin lịch làm việc sẽ hiển thị ở đây. Click vào ô để chỉnh sửa lịch.',
+    en: 'Schedule information will be displayed here. Click on a cell to edit schedule.',
+  },
+  'common.previous': {
+    vi: 'Trước',
+    en: 'Previous',
+  },
+  'common.next': {
+    vi: 'Sau',
+    en: 'Next',
+  },
+  'common.more': {
+    vi: 'thêm',
+    en: 'more',
+  },
+
+  // Departments
+  'departments.total': {
+    vi: 'Tổng',
+    en: 'Total',
+  },
+  'departments.departments': {
+    vi: 'phòng ban',
+    en: 'departments',
+  },
+  'departments.totalDepartments': {
+    vi: 'Tổng số phòng ban',
+    en: 'Total Departments',
+  },
+  'departments.totalEmployees': {
+    vi: 'Tổng số nhân viên',
+    en: 'Total Employees',
+  },
+  'departments.avgEmployees': {
+    vi: 'TB nhân viên/phòng ban',
+    en: 'Avg Employees/Dept',
+  },
+  'departments.largestDept': {
+    vi: 'Phòng ban lớn nhất',
+    en: 'Largest Department',
+  },
+  'departments.employees': {
+    vi: 'Nhân viên',
+    en: 'Employees',
+  },
+
+  // Reports
+  'reports.summary': {
+    vi: 'Tổng hợp và Phân tích',
+    en: 'Summary and Analytics',
+  },
+  'reports.from': {
+    vi: 'Từ',
+    en: 'From',
+  },
+  'reports.to': {
+    vi: 'Đến',
+    en: 'To',
+  },
+  'reports.totalEmployees': {
+    vi: 'Tổng số nhân viên',
+    en: 'Total Employees',
+  },
+  'reports.attendanceRate': {
+    vi: 'Tỷ lệ chấm công',
+    en: 'Attendance Rate',
+  },
+  'reports.pendingRequests': {
+    vi: 'Yêu cầu đang chờ',
+    en: 'Pending Requests',
+  },
+  'reports.attendanceStats': {
+    vi: 'Thống kê chấm công',
+    en: 'Attendance Statistics',
+  },
+  'reports.totalAttendance': {
+    vi: 'Tổng bản ghi chấm công',
+    en: 'Total Attendance Records',
+  },
+  'reports.leaveRequestsStats': {
+    vi: 'Thống kê yêu cầu nghỉ phép',
+    en: 'Leave Requests Statistics',
+  },
+  'reports.totalRequests': {
+    vi: 'Tổng yêu cầu',
+    en: 'Total Requests',
+  },
+
+  // Task
+  'task.addTask': {
+    vi: 'Thêm nhiệm vụ mới',
+    en: 'Add New Task',
+  },
+  'task.title': {
+    vi: 'Tiêu đề',
+    en: 'Title',
+  },
+  'task.titlePlaceholder': {
+    vi: 'Nhập tiêu đề nhiệm vụ',
+    en: 'Enter task title',
+  },
+  'task.description': {
+    vi: 'Mô tả',
+    en: 'Description',
+  },
+  'task.descriptionPlaceholder': {
+    vi: 'Nhập mô tả nhiệm vụ',
+    en: 'Enter task description',
+  },
+  'task.tag': {
+    vi: 'Nhãn',
+    en: 'Tag',
+  },
+  'task.dueDate': {
+    vi: 'Hạn chót',
+    en: 'Due Date',
+  },
+  'task.tomorrow': {
+    vi: 'Ngày mai',
+    en: 'Tomorrow',
+  },
+  'task.nextWeek': {
+    vi: 'Tuần sau',
+    en: 'Next Week',
+  },
 }
 
 let currentLanguage: Language = 'vi'
