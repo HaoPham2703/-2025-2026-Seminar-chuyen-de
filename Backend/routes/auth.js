@@ -8,8 +8,42 @@ import { hashPassword, comparePassword } from '../utils/password.js';
 const router = express.Router();
 
 /**
- * POST /api/auth/login
- * Đăng nhập
+ * @swagger
+ * /auth/login:
+ *   post:
+ *     summary: Đăng nhập
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LoginRequest'
+ *     responses:
+ *       200:
+ *         description: Đăng nhập thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/LoginResponse'
+ *       400:
+ *         description: Thiếu thông tin
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Email hoặc password không đúng
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.post('/login', async (req, res, next) => {
   try {
@@ -118,8 +152,57 @@ router.post('/login', async (req, res, next) => {
 });
 
 /**
- * POST /api/auth/signup
- * Đăng ký tài khoản mới
+ * @swagger
+ * /auth/signup:
+ *   post:
+ *     summary: Đăng ký tài khoản mới
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *               - firstName
+ *               - lastName
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               password:
+ *                 type: string
+ *               firstName:
+ *                 type: string
+ *               lastName:
+ *                 type: string
+ *               phone:
+ *                 type: string
+ *               tenantId:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Đăng ký thành công
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   $ref: '#/components/schemas/LoginResponse'
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.post('/signup', async (req, res, next) => {
   try {
@@ -307,8 +390,38 @@ router.post('/signup', async (req, res, next) => {
 });
 
 /**
- * GET /api/auth/me
- * Lấy thông tin user hiện tại
+ * @swagger
+ * /auth/me:
+ *   get:
+ *     summary: Lấy thông tin user hiện tại
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Thông tin user
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/User'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: User not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.get('/me', authenticateToken, async (req, res, next) => {
   try {

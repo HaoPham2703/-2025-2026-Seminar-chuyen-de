@@ -10,8 +10,20 @@ router.use(authenticateToken);
 router.use(tenantIsolation);
 
 /**
- * GET /api/employees/profile
- * Lấy thông tin profile của employee hiện tại
+ * @swagger
+ * /employees/profile:
+ *   get:
+ *     summary: Lấy thông tin profile của employee hiện tại
+ *     tags: [Employees]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Thông tin profile
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Employee not found
  */
 router.get('/profile', async (req, res, next) => {
   try {

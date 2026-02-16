@@ -52,8 +52,13 @@ export function errorHandler(err, req, res, next) {
  * 404 Not Found handler
  */
 export function notFoundHandler(req, res) {
+  console.log(`❌ 404 - Route not found: ${req.method} ${req.originalUrl}`);
+  console.log(`   Available routes: /api/auth, /api/attendance, /api/employees, /api/notifications, /api/admin`);
   res.status(404).json({
     success: false,
-    message: `Route ${req.originalUrl} not found`
+    message: `Route ${req.originalUrl} not found`,
+    method: req.method,
+    path: req.path,
+    originalUrl: req.originalUrl
   });
 }

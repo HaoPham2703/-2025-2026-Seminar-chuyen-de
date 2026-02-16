@@ -2,8 +2,10 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import express from 'express';
 import { createServer } from 'http';
+import swaggerUi from 'swagger-ui-express';
 import { connectDatabase } from './config/database.js';
 import { initializeSocketIO } from './config/socket.js';
+import { swaggerSpec } from './config/swagger.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 
 // Routes
@@ -11,6 +13,11 @@ import attendanceRoutes from './routes/attendance.js';
 import authRoutes from './routes/auth.js';
 import employeesRoutes from './routes/employees.js';
 import notificationRoutes from './routes/notifications.js';
+import adminRoutes from './routes/admin.js';
+
+// Debug: Log khi import routes
+console.log('📦 Loading routes...');
+console.log('  ✅ Admin routes imported');
 
 // Load environment variables
 dotenv.config();
@@ -27,9 +34,13 @@ app.use(cors({
   origin: [
     process.env.CORS_ORIGIN || 'http://localhost:8081',
     'http://localhost:8081',
+    'http://localhost:5173', // Vite dev server (adminSide)
+    'http://localhost:5174', // Vite dev server (adminSide alternative port)
     'http://192.168.1.6:8081', // Thêm IP của máy cho mobile devices
     /^http:\/\/192\.168\.\d+\.\d+:8081$/, // Allow any local network IP
+    /^http:\/\/192\.168\.\d+\.\d+:5173$/, // Allow adminSide on local network
     /^http:\/\/10\.\d+\.\d+\.\d+:8081$/, // Allow 10.x.x.x network
+    /^http:\/\/10\.\d+\.\d+\.\d+:5173$/, // Allow adminSide on 10.x.x.x network
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -47,12 +58,19 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Swagger API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'DACN API Documentation',
+}));
+
 // API Info endpoint
 app.get('/api', (req, res) => {
   res.json({
     success: true,
     message: 'DACN API Server',
     version: '1.0.0',
+    documentation: 'http://localhost:3000/api-docs',
     endpoints: {
       auth: {
         'POST /api/auth/login': 'Đăng nhập',
@@ -79,6 +97,15 @@ app.use('/api/auth', authRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/employees', employeesRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/admin', adminRoutes);
+
+// Debug: Log registered routes
+console.log('📋 Registered API routes:');
+console.log('  - /api/auth');
+console.log('  - /api/attendance');
+console.log('  - /api/employees');
+console.log('  - /api/notifications');
+console.log('  - /api/admin (with /dashboard, /employees, /attendance/today, /leave-requests)');
 
 // 404 handler
 app.use(notFoundHandler);
@@ -97,8 +124,11 @@ async function startServer() {
     httpServer.listen(PORT, () => {
       console.log(`🚀 Server is running on port ${PORT}`);
       console.log(`📡 API endpoint: http://localhost:${PORT}/api`);
+      console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
       console.log(`🏥 Health check: http://localhost:${PORT}/health`);
       console.log(`🔌 Socket.IO server ready`);
+      console.log(`🧪 Test admin route: http://localhost:${PORT}/api/admin/test`);
+      console.log(`📊 Admin dashboard: http://localhost:${PORT}/api/admin/dashboard`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);
