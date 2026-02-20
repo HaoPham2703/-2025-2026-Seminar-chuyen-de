@@ -467,6 +467,360 @@ const translations: Translations = {
     vi: 'Tuần sau',
     en: 'Next Week',
   },
+
+  // Settings
+  'settings.description': {
+    vi: 'Quản lý cài đặt tài khoản và tùy chọn',
+    en: 'Manage your account settings and preferences',
+  },
+  'settings.profile': {
+    vi: 'Hồ sơ',
+    en: 'Profile',
+  },
+  'settings.password': {
+    vi: 'Mật khẩu',
+    en: 'Password',
+  },
+  'settings.preferences': {
+    vi: 'Tùy chọn',
+    en: 'Preferences',
+  },
+  'settings.profileUpdated': {
+    vi: 'Cập nhật hồ sơ thành công!',
+    en: 'Profile updated successfully!',
+  },
+  'settings.passwordChanged': {
+    vi: 'Đổi mật khẩu thành công!',
+    en: 'Password changed successfully!',
+  },
+  'settings.preferencesSaved': {
+    vi: 'Lưu tùy chọn thành công!',
+    en: 'Preferences saved successfully!',
+  },
+  'settings.saveChanges': {
+    vi: 'Lưu thay đổi',
+    en: 'Save Changes',
+  },
+  'settings.emailCannotChange': {
+    vi: 'Email không thể thay đổi',
+    en: 'Email cannot be changed',
+  },
+  'settings.currentPassword': {
+    vi: 'Mật khẩu hiện tại',
+    en: 'Current Password',
+  },
+  'settings.newPassword': {
+    vi: 'Mật khẩu mới',
+    en: 'New Password',
+  },
+  'settings.changePassword': {
+    vi: 'Đổi mật khẩu',
+    en: 'Change Password',
+  },
+  'settings.emailNotifications': {
+    vi: 'Thông báo qua Email',
+    en: 'Email Notifications',
+  },
+  'settings.emailNotificationsDesc': {
+    vi: 'Nhận thông báo qua email cho các cập nhật quan trọng',
+    en: 'Receive email notifications for important updates',
+  },
+  'settings.pushNotifications': {
+    vi: 'Thông báo đẩy',
+    en: 'Push Notifications',
+  },
+  'settings.pushNotificationsDesc': {
+    vi: 'Nhận thông báo đẩy trên thiết bị của bạn',
+    en: 'Receive push notifications on your device',
+  },
+  'settings.weeklyReports': {
+    vi: 'Báo cáo hàng tuần',
+    en: 'Weekly Reports',
+  },
+  'settings.weeklyReportsDesc': {
+    vi: 'Nhận báo cáo tóm tắt hàng tuần qua email',
+    en: 'Receive weekly summary reports via email',
+  },
+  'settings.savePreferences': {
+    vi: 'Lưu tùy chọn',
+    en: 'Save Preferences',
+  },
+  'settings.company': {
+    vi: 'Giờ làm việc công ty',
+    en: 'Company Working Hours',
+  },
+  'settings.workStartTime': {
+    vi: 'Giờ bắt đầu làm việc',
+    en: 'Work Start Time',
+  },
+  'settings.workEndTime': {
+    vi: 'Giờ kết thúc làm việc',
+    en: 'Work End Time',
+  },
+  'settings.breakDuration': {
+    vi: 'Thời gian nghỉ (phút)',
+    en: 'Break Duration (minutes)',
+  },
+  'settings.lateThreshold': {
+    vi: 'Ngưỡng đi trễ (phút)',
+    en: 'Late Threshold (minutes)',
+  },
+  'settings.overtimeThreshold': {
+    vi: 'Ngưỡng tăng ca (giờ)',
+    en: 'Overtime Threshold (hours)',
+  },
+  'settings.saveCompanySettings': {
+    vi: 'Lưu cài đặt công ty',
+    en: 'Save Company Settings',
+  },
+  'settings.companySettingsUpdated': {
+    vi: 'Cập nhật giờ làm việc công ty thành công!',
+    en: 'Company working hours and attendance settings updated successfully!',
+  },
+
+  // Help Center
+  'help.title': {
+    vi: 'Trung tâm trợ giúp',
+    en: 'Help Center',
+  },
+  'help.description': {
+    vi: 'Tìm câu trả lời cho các câu hỏi thường gặp và hướng dẫn sử dụng',
+    en: 'Find answers to frequently asked questions and usage guides',
+  },
+  'help.faq': {
+    vi: 'Câu hỏi thường gặp',
+    en: 'Frequently Asked Questions',
+  },
+  'help.guides': {
+    vi: 'Hướng dẫn',
+    en: 'Guides',
+  },
+  'help.support': {
+    vi: 'Hỗ trợ',
+    en: 'Support',
+  },
+  'help.contactSupport': {
+    vi: 'Liên hệ hỗ trợ',
+    en: 'Contact Support',
+  },
+  'help.email': {
+    vi: 'Email',
+    en: 'Email',
+  },
+  'help.phone': {
+    vi: 'Điện thoại',
+    en: 'Phone',
+  },
+  'help.officeHours': {
+    vi: 'Giờ làm việc',
+    en: 'Office Hours',
+  },
+  'help.hours': {
+    vi: 'Thứ 2 - Thứ 6: 9:00 - 18:00',
+    en: 'Mon - Fri: 9:00 AM - 6:00 PM',
+  },
+  'help.timezone': {
+    vi: 'GMT+7 (Việt Nam)',
+    en: 'GMT+7 (Vietnam)',
+  },
+  'help.responseTime': {
+    vi: 'Phản hồi trong vòng 24 giờ',
+    en: 'Response within 24 hours',
+  },
+  'help.faq1.question': {
+    vi: 'Làm thế nào để thêm nhân viên mới?',
+    en: 'How do I add a new employee?',
+  },
+  'help.faq1.answer': {
+    vi: 'Để thêm nhân viên mới, vào trang Phòng ban, chọn phòng ban và nhấn nút "Thêm nhân viên". Điền thông tin cần thiết và lưu.',
+    en: 'To add a new employee, go to the Departments page, click on the department, and use the "Add Employee" button. Fill in the required information and save.',
+  },
+  'help.faq2.question': {
+    vi: 'Làm thế nào để duyệt yêu cầu nghỉ phép?',
+    en: 'How do I approve leave requests?',
+  },
+  'help.faq2.answer': {
+    vi: 'Điều hướng đến Dashboard và tìm card Yêu cầu nghỉ phép. Nhấn vào yêu cầu đang chờ để xem chi tiết, sau đó nhấn "Duyệt" hoặc "Từ chối" khi cần.',
+    en: 'Navigate to the Dashboard and find the Leave Requests card. Click on a pending request to view details, then click "Approve" or "Reject" as needed.',
+  },
+  'help.faq3.question': {
+    vi: 'Làm thế nào để xem báo cáo chấm công?',
+    en: 'How do I view attendance reports?',
+  },
+  'help.faq3.answer': {
+    vi: 'Vào trang Chấm công để xem bản ghi chấm công hôm nay. Bạn có thể lọc theo ngày và xem thống kê chi tiết cho từng nhân viên.',
+    en: 'Go to the Attendance page to see today\'s attendance records. You can filter by date and view detailed statistics for each employee.',
+  },
+  'help.faq4.question': {
+    vi: 'Làm thế nào để tạo báo cáo?',
+    en: 'How do I generate reports?',
+  },
+  'help.faq4.answer': {
+    vi: 'Truy cập trang Báo cáo để xem thống kê tổng hợp. Bạn có thể lọc theo khoảng thời gian và xuất dữ liệu nếu cần.',
+    en: 'Visit the Reports page to view comprehensive statistics. You can filter by date range and export the data if needed.',
+  },
+  'help.faq5.question': {
+    vi: 'Làm thế nào để quản lý phòng ban?',
+    en: 'How do I manage departments?',
+  },
+  'help.faq5.answer': {
+    vi: 'Trang Phòng ban hiển thị tất cả các phòng ban cùng nhân viên. Bạn có thể xem chi tiết nhân viên, thêm nhân viên mới và quản lý cấu trúc phòng ban.',
+    en: 'The Departments page shows all departments with their employees. You can view employee details, add new employees, and manage department structure.',
+  },
+  'help.faq6.question': {
+    vi: 'Làm thế nào để đổi mật khẩu?',
+    en: 'How do I change my password?',
+  },
+  'help.faq6.answer': {
+    vi: 'Vào Cài đặt > tab Mật khẩu. Nhập mật khẩu hiện tại và mật khẩu mới, sau đó nhấn "Đổi mật khẩu".',
+    en: 'Go to Settings > Password tab. Enter your current password and new password, then click "Change Password".',
+  },
+  'help.guide1.title': {
+    vi: 'Bắt đầu',
+    en: 'Getting Started',
+  },
+  'help.guide1.description': {
+    vi: 'Tìm hiểu những điều cơ bản về cách sử dụng HRsync',
+    en: 'Learn the basics of using HRsync',
+  },
+  'help.guide1.step1': {
+    vi: 'Đăng nhập vào tài khoản admin của bạn',
+    en: 'Log in to your admin account',
+  },
+  'help.guide1.step2': {
+    vi: 'Khám phá Dashboard để xem thống kê tổng quan',
+    en: 'Explore the Dashboard to see overview statistics',
+  },
+  'help.guide1.step3': {
+    vi: 'Điều hướng đến các phần khác nhau bằng sidebar',
+    en: 'Navigate to different sections using the sidebar',
+  },
+  'help.guide1.step4': {
+    vi: 'Bắt đầu quản lý nhân viên và chấm công',
+    en: 'Start managing employees and attendance',
+  },
+  'help.guide2.title': {
+    vi: 'Quản lý nhân viên',
+    en: 'Managing Employees',
+  },
+  'help.guide2.description': {
+    vi: 'Cách thêm và quản lý nhân viên',
+    en: 'How to add and manage employees',
+  },
+  'help.guide2.step1': {
+    vi: 'Vào trang Phòng ban',
+    en: 'Go to Departments page',
+  },
+  'help.guide2.step2': {
+    vi: 'Chọn một phòng ban',
+    en: 'Select a department',
+  },
+  'help.guide2.step3': {
+    vi: 'Nhấn nút "Thêm nhân viên"',
+    en: 'Click "Add Employee" button',
+  },
+  'help.guide2.step4': {
+    vi: 'Điền thông tin nhân viên và lưu',
+    en: 'Fill in employee information and save',
+  },
+  'help.guide3.title': {
+    vi: 'Xem báo cáo',
+    en: 'Viewing Reports',
+  },
+  'help.guide3.description': {
+    vi: 'Cách tạo và xem báo cáo',
+    en: 'How to generate and view reports',
+  },
+  'help.guide3.step1': {
+    vi: 'Điều hướng đến trang Báo cáo',
+    en: 'Navigate to Reports page',
+  },
+  'help.guide3.step2': {
+    vi: 'Chọn khoảng thời gian nếu cần',
+    en: 'Select date range if needed',
+  },
+  'help.guide3.step3': {
+    vi: 'Xem thống kê và phân tích',
+    en: 'View statistics and analytics',
+  },
+  'help.guide3.step4': {
+    vi: 'Xuất dữ liệu nếu cần',
+    en: 'Export data if required',
+  },
+
+  // Integrations
+  'integrations.description': {
+    vi: 'Kết nối HRsync với các công cụ và dịch vụ yêu thích của bạn',
+    en: 'Connect HRsync with your favorite tools and services',
+  },
+  'integrations.connected': {
+    vi: 'Đã kết nối',
+    en: 'Connected',
+  },
+  'integrations.available': {
+    vi: 'Có sẵn',
+    en: 'Available',
+  },
+  'integrations.comingSoon': {
+    vi: 'Sắp ra mắt',
+    en: 'Coming Soon',
+  },
+  'integrations.connect': {
+    vi: 'Kết nối',
+    en: 'Connect',
+  },
+  'integrations.disconnect': {
+    vi: 'Ngắt kết nối',
+    en: 'Disconnect',
+  },
+  'integrations.category': {
+    vi: 'Danh mục',
+    en: 'Category',
+  },
+  'integrations.category.communication': {
+    vi: 'Giao tiếp',
+    en: 'Communication',
+  },
+  'integrations.category.calendar': {
+    vi: 'Lịch',
+    en: 'Calendar',
+  },
+  'integrations.category.hr': {
+    vi: 'Nhân sự',
+    en: 'HR',
+  },
+  'integrations.category.analytics': {
+    vi: 'Phân tích',
+    en: 'Analytics',
+  },
+  'integrations.filter.all': {
+    vi: 'Tất cả',
+    en: 'All',
+  },
+  'integrations.filter.connected': {
+    vi: 'Đã kết nối',
+    en: 'Connected',
+  },
+  'integrations.filter.available': {
+    vi: 'Có sẵn',
+    en: 'Available',
+  },
+  'integrations.filter.comingSoon': {
+    vi: 'Sắp ra mắt',
+    en: 'Coming Soon',
+  },
+  'integrations.info.title': {
+    vi: 'Về Tích hợp',
+    en: 'About Integrations',
+  },
+  'integrations.info.description': {
+    vi: 'Tích hợp cho phép bạn kết nối HRsync với các công cụ và dịch vụ khác mà bạn sử dụng. Điều này giúp tối ưu hóa quy trình làm việc và tự động hóa các tác vụ.',
+    en: 'Integrations allow you to connect HRsync with other tools and services you use. This helps streamline your workflow and automate tasks.',
+  },
+  'integrations.learnMore': {
+    vi: 'Tìm hiểu thêm',
+    en: 'Learn more',
+  },
 }
 
 let currentLanguage: Language = 'vi'

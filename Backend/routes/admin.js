@@ -299,4 +299,145 @@ router.get('/leave-requests', async (req, res, next) => {
   }
 });
 
+/**
+ * GET /api/admin/attendance-settings
+ * Lấy attendanceSettings của tenant (giờ làm việc công ty)
+ */
+router.get('/attendance-settings', async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const tenant = await db.collection('tenants').findOne({ _id: tenantObjectId });
+
+    if (!tenant) {
+      return res.status(404).json({
+        success: false,
+        message: 'Tenant not found',
+      });
+    }
+
+    const settings = tenant.attendanceSettings || {};
+
+    res.json({
+      success: true,
+      data: {
+        workStartTime: settings.workStartTime || '09:00',
+        workEndTime: settings.workEndTime || '18:00',
+        breakDuration: settings.breakDuration || 60,
+        lateThreshold: settings.lateThreshold || 15,
+        overtimeThreshold: settings.overtimeThreshold || 8,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/admin/attendance-settings
+ * Cập nhật attendanceSettings của tenant và lưu log thay đổi
+ * Body: { workStartTime?, workEndTime?, breakDuration?, lateThreshold?, overtimeThreshold?, reason? }
+ */
+router.put('/attendance-settings', async (req, res, next) => {
+  try {
+    const { tenantId, userId } = req.user;
+    const { workStartTime, workEndTime, breakDuration, lateThreshold, overtimeThreshold, reason } =
+      req.body;
+
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const tenant = await db.collection('tenants').findOne({ _id: tenantObjectId });
+
+    if (!tenant) {
+      return res.status(404).json({
+        success: false,
+        message: 'Tenant not found',
+      });
+    }
+
+    const before = tenant.attendanceSettings || {};
+
+    const update = {};
+    if (workStartTime !== undefined) update['attendanceSettings.workStartTime'] = workStartTime;
+    if (workEndTime !== undefined) update['attendanceSettings.workEndTime'] = workEndTime;
+    if (breakDuration !== undefined) update['attendanceSettings.breakDuration'] = breakDuration;
+    if (lateThreshold !== undefined) update['attendanceSettings.lateThreshold'] = lateThreshold;
+    if (overtimeThreshold !== undefined)
+      update['attendanceSettings.overtimeThreshold'] = overtimeThreshold;
+
+    if (Object.keys(update).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No fields to update',
+      });
+    }
+
+    await db.collection('tenants').updateOne(
+      { _id: tenantObjectId },
+      {
+        $set: update,
+      }
+    );
+
+    const updatedTenant = await db.collection('tenants').findOne({ _id: tenantObjectId });
+    const after = updatedTenant.attendanceSettings || {};
+
+    // Lưu log thay đổi vào attendanceSettingsLogs
+    await db.collection('attendanceSettingsLogs').insertOne({
+      tenantId: tenantObjectId,
+      changedBy: new ObjectId(userId),
+      before,
+      after,
+      reason: reason || null,
+      changedAt: new Date(),
+    });
+
+    res.json({
+      success: true,
+      data: after,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/admin/attendance-settings/logs
+ * Lấy lịch sử thay đổi attendanceSettings của tenant
+ */
+router.get('/attendance-settings/logs', async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { limit = 50 } = req.query;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const logs = await db
+      .collection('attendanceSettingsLogs')
+      .find({ tenantId: tenantObjectId })
+      .sort({ changedAt: -1 })
+      .limit(parseInt(limit))
+      .toArray();
+
+    res.json({
+      success: true,
+      data: {
+        logs: logs.map((log) => ({
+          id: log._id.toString(),
+          changedBy: log.changedBy?.toString() || null,
+          before: log.before || null,
+          after: log.after || null,
+          reason: log.reason || null,
+          changedAt: log.changedAt,
+        })),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;

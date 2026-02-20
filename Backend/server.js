@@ -14,6 +14,7 @@ import authRoutes from './routes/auth.js';
 import employeesRoutes from './routes/employees.js';
 import notificationRoutes from './routes/notifications.js';
 import adminRoutes from './routes/admin.js';
+import schedulesRoutes from './routes/schedules.js';
 
 // Debug: Log khi import routes
 console.log('📦 Loading routes...');
@@ -98,6 +99,7 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/employees', employeesRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/schedules', schedulesRoutes);
 
 // Debug: Log registered routes
 console.log('📋 Registered API routes:');

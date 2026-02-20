@@ -72,6 +72,34 @@
   - `adminSide/src/components/dashboard/*.tsx` - Tất cả dashboard cards
   - `adminSide/src/components/Header.tsx` - Header buttons
 
+### Lesson 27: Admin Working Hours & Schedule Change Logs
+- **Mục tiêu**: Cho phép admin cấu hình giờ làm việc chung của công ty và chuẩn bị hạ tầng cho giờ làm riêng từng nhân viên, kèm lịch sử thay đổi.
+- **Giải pháp (Backend)**:
+  - Thêm API cho tenant-level attendance settings:
+    - `GET /api/admin/attendance-settings` - Lấy `workStartTime`, `workEndTime`, `breakDuration`, `lateThreshold`, `overtimeThreshold`.
+    - `PUT /api/admin/attendance-settings` - Cập nhật các field trên.
+  - Mỗi lần update, ghi log vào collection `attendanceSettingsLogs` với `before`, `after`, `changedBy`, `reason`, `changedAt`.
+  - Tạo routes `Backend/routes/schedules.js` và mount ở `server.js`:
+    - `GET /api/schedules?employeeId=` - Lấy schedules cho tenant, filter theo employee.
+    - `POST /api/schedules` - Tạo schedule cho 1 employee, lưu log vào `scheduleChangeLogs`.
+    - `PUT /api/schedules/:id` - Cập nhật schedule, ghi log before/after.
+    - `GET /api/schedules/logs?employeeId=` - Lấy lịch sử thay đổi giờ làm từng người.
+- **Giải pháp (adminSide)**:
+  - Mở rộng `adminService`:
+    - `getAttendanceSettings()` gọi `GET /admin/attendance-settings`.
+    - `updateAttendanceSettings()` gọi `PUT /admin/attendance-settings`.
+  - Cập nhật `Settings.tsx`:
+    - Thêm tab **“Giờ làm việc công ty / Company Working Hours”**.
+    - Form chỉnh: giờ vào (`workStartTime`), giờ ra (`workEndTime`), thời gian nghỉ (`breakDuration`), ngưỡng đi trễ (`lateThreshold`), ngưỡng tăng ca (`overtimeThreshold`).
+    - Load giá trị từ API khi mở Settings, lưu thay đổi qua `updateAttendanceSettings()`, hiển thị thông báo thành công/thất bại.
+  - Cập nhật `i18n.ts` để hỗ trợ full vi/en cho tất cả label liên quan.
+- **Best practices**:
+  - Khi thay đổi các config quan trọng (giờ làm, policy chấm công), luôn có collection log riêng với before/after để audit.
+  - Phân tách rõ:
+    - **Tenant settings** (áp dụng mặc định cho toàn công ty).
+    - **Employee schedules** (override ở mức cá nhân).
+  - FE chỉ cần gọi 1 API cho config chung, không hardcode vào giao diện.
+
 ### Lesson 25: Tích hợp i18n (English/Vietnamese) vào adminSide
 - **Mục đích**: Hỗ trợ đa ngôn ngữ cho admin dashboard
 - **Giải pháp**:
@@ -555,8 +583,10 @@ Dashboard quản lý nhân sự cho admin với đầy đủ chức năng tươn
 [X] Implement Schedule page (weekly view với employees)
 [X] Implement Departments page (group employees by department)
 [X] Implement Reports page (tổng hợp data từ attendance, employees, leaveRequests)
-[ ] Implement modals: Add Task, Create Request (nếu cần)
-[ ] Tích hợp thêm API endpoints cho Schedule và Departments nếu cần
+[X] Implement modals: Add Task (đã có AddTaskModal)
+[X] **Hoàn thiện Settings page** - quản lý profile admin, đổi password, preferences với tabs
+[X] **Hoàn thiện HelpCenter page** - FAQs, guides, support contact với expandable sections
+[X] **Hoàn thiện Integrations page** - hiển thị các tích hợp có sẵn, filter, connect/disconnect
 
 ## Project Overview
 
@@ -651,4 +681,9 @@ codeZoneMobile/
 - ✅ i18n: English/Vietnamese support
 - ✅ Interactive buttons: Tất cả buttons đã hoạt động
 - ✅ **Pages**: Attendance, Schedule, Departments, Reports đã được implement đầy đủ
+- ✅ **Settings Page**: Quản lý profile (firstName, lastName, phone), đổi password với validation, preferences (email notifications, push notifications, weekly reports)
+- ✅ **HelpCenter Page**: FAQs với expandable sections, guides với step-by-step instructions, support contact (email, phone, office hours)
+- ✅ **Integrations Page**: Hiển thị các tích hợp (Email, Google Calendar, Slack, Teams, Zoom, Payroll), filter theo status, connect/disconnect functionality
 - ✅ **Modals**: Add Task modal với form validation
+- ✅ **i18n**: Đã thêm đầy đủ translations cho Settings, HelpCenter, Integrations (Vietnamese và English)
+ - ✅ **Company Working Hours**: Tab riêng trong Settings cho phép admin cấu hình giờ làm việc chung (workStartTime, workEndTime, breakDuration, lateThreshold, overtimeThreshold) dùng API `/api/admin/attendance-settings`, có backend log lịch sử thay đổi trong `attendanceSettingsLogs`.

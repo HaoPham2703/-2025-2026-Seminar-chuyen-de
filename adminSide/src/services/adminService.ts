@@ -93,4 +93,32 @@ export const adminService = {
     const response = await api.get<{ requests: LeaveRequest[]; total: number }>(url)
     return response.data || { requests: [], total: 0 }
   },
+
+  async getAttendanceSettings(): Promise<{
+    workStartTime: string
+    workEndTime: string
+    breakDuration: number
+    lateThreshold: number
+    overtimeThreshold: number
+  }> {
+    const response = await api.get<{
+      workStartTime: string
+      workEndTime: string
+      breakDuration: number
+      lateThreshold: number
+      overtimeThreshold: number
+    }>('/admin/attendance-settings')
+    return response.data!
+  },
+
+  async updateAttendanceSettings(payload: {
+    workStartTime?: string
+    workEndTime?: string
+    breakDuration?: number
+    lateThreshold?: number
+    overtimeThreshold?: number
+    reason?: string
+  }): Promise<void> {
+    await api.put('/admin/attendance-settings', payload)
+  },
 }
