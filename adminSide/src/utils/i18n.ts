@@ -57,6 +57,22 @@ const translations: Translations = {
     vi: 'Đang tải...',
     en: 'Loading...',
   },
+  'common.all': {
+    vi: 'Tất cả',
+    en: 'All',
+  },
+  'common.select': {
+    vi: 'Chọn',
+    en: 'Select',
+  },
+  'common.save': {
+    vi: 'Lưu',
+    en: 'Save',
+  },
+  'common.saving': {
+    vi: 'Đang lưu...',
+    en: 'Saving...',
+  },
 
   // Navigation
   'nav.dashboard': {
@@ -70,6 +86,10 @@ const translations: Translations = {
   'nav.attendance': {
     vi: 'Chấm công',
     en: 'Attendance',
+  },
+  'nav.payroll': {
+    vi: 'Lương',
+    en: 'Payroll',
   },
   'nav.departments': {
     vi: 'Phòng ban',
@@ -201,6 +221,10 @@ const translations: Translations = {
     vi: 'Có mặt',
     en: 'Present',
   },
+  'status.late': {
+    vi: 'Trễ',
+    en: 'Late',
+  },
 
   // Login/Signup
   'auth.signIn': {
@@ -304,6 +328,88 @@ const translations: Translations = {
   'common.total': {
     vi: 'Tổng cộng',
     en: 'Total',
+  },
+
+  // Payroll
+  'payroll.title': {
+    vi: 'Quản lý Lương',
+    en: 'Payroll Management',
+  },
+  'payroll.subtitle': {
+    vi: 'Tạo và quản lý phiếu lương nhân viên',
+    en: 'Create and manage employee payroll',
+  },
+  'payroll.addNew': {
+    vi: 'Tạo phiếu lương',
+    en: 'Create Payroll',
+  },
+  'payroll.month': {
+    vi: 'Tháng',
+    en: 'Month',
+  },
+  'payroll.year': {
+    vi: 'Năm',
+    en: 'Year',
+  },
+  'payroll.employee': {
+    vi: 'Nhân viên',
+    en: 'Employee',
+  },
+  'payroll.period': {
+    vi: 'Kỳ lương',
+    en: 'Period',
+  },
+  'payroll.baseSalary': {
+    vi: 'Lương cơ bản',
+    en: 'Base Salary',
+  },
+  'payroll.allowances': {
+    vi: 'Phụ cấp',
+    en: 'Allowances',
+  },
+  'payroll.deductions': {
+    vi: 'Khấu trừ',
+    en: 'Deductions',
+  },
+  'payroll.netSalary': {
+    vi: 'Thực nhận',
+    en: 'Net Salary',
+  },
+  'payroll.status': {
+    vi: 'Trạng thái',
+    en: 'Status',
+  },
+  'payroll.approved': {
+    vi: 'Đã duyệt',
+    en: 'Approved',
+  },
+  'payroll.pending': {
+    vi: 'Chờ duyệt',
+    en: 'Pending',
+  },
+  'payroll.draft': {
+    vi: 'Nháp',
+    en: 'Draft',
+  },
+  'payroll.empty': {
+    vi: 'Chưa có phiếu lương nào',
+    en: 'No payroll records yet',
+  },
+  'payroll.createTitle': {
+    vi: 'Tạo phiếu lương mới',
+    en: 'Create New Payroll',
+  },
+  'payroll.createSubtitle': {
+    vi: 'Điền thông tin bên dưới',
+    en: 'Fill in the information below',
+  },
+  'payroll.itemName': {
+    vi: 'Tên khoản',
+    en: 'Item name',
+  },
+  'payroll.preview': {
+    vi: 'Thực nhận dự kiến',
+    en: 'Estimated Net Salary',
   },
 
   // Attendance

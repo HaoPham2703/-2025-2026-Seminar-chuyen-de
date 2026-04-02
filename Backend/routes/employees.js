@@ -2,6 +2,7 @@ import express from 'express';
 import { ObjectId } from 'mongodb';
 import { getDatabase } from '../config/database.js';
 import { authenticateToken, tenantIsolation } from '../middleware/auth.js';
+import { generateQrToken, getQrWindowSeconds } from '../utils/qr.js';
 
 const router = express.Router();
 
@@ -32,67 +33,72 @@ router.get('/profile', async (req, res, next) => {
     const userIdObjectId = new ObjectId(userId);
     const tenantIdObjectId = new ObjectId(tenantId);
 
-    // Lấy user info
     const user = await db.collection('users').findOne({
       _id: userIdObjectId,
-      tenantId: tenantIdObjectId
+      tenantId: tenantIdObjectId,
     });
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: 'User not found',
       });
     }
 
-    // Lấy employee info
     const employee = await db.collection('employees').findOne({
       userId: userIdObjectId,
-      tenantId: tenantIdObjectId
+      tenantId: tenantIdObjectId,
     });
 
     if (!employee) {
       return res.status(404).json({
         success: false,
-        message: 'Employee not found'
+        message: 'Employee not found',
       });
     }
 
-    // Tính toán thống kê từ attendance
     const today = new Date();
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    
-    const attendanceStats = await db.collection('attendance').aggregate([
-      {
-        $match: {
-          tenantId: tenantIdObjectId,
-          employeeId: employee._id,
-          date: { $gte: startOfMonth }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          totalWorkingDays: { $sum: 1 },
-          totalHours: { $sum: { $divide: ['$workDuration', 60] } },
-          lateCount: { $sum: { $cond: [{ $eq: ['$status', 'LATE'] }, 1, 0] } },
-          absentCount: { $sum: { $cond: [{ $eq: ['$status', 'ABSENT'] }, 1, 0] } },
-          overtimeHours: { $sum: { $divide: ['$overtimeDuration', 60] } }
-        }
-      }
-    ]).toArray();
+
+    const attendanceStats = await db
+      .collection('attendance')
+      .aggregate([
+        {
+          $match: {
+            tenantId: tenantIdObjectId,
+            employeeId: employee._id,
+            date: { $gte: startOfMonth },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalWorkingDays: { $sum: 1 },
+            totalHours: { $sum: { $divide: ['$workDuration', 60] } },
+            lateCount: { $sum: { $cond: [{ $eq: ['$status', 'LATE'] }, 1, 0] } },
+            absentCount: { $sum: { $cond: [{ $eq: ['$status', 'ABSENT'] }, 1, 0] } },
+            overtimeHours: { $sum: { $divide: ['$overtimeDuration', 60] } },
+          },
+        },
+      ])
+      .toArray();
 
     const stats = attendanceStats[0] || {
       totalWorkingDays: 0,
       totalHours: 0,
       lateCount: 0,
       absentCount: 0,
-      overtimeHours: 0
+      overtimeHours: 0,
     };
 
-    const onTimeRate = stats.totalWorkingDays > 0
-      ? Math.round(((stats.totalWorkingDays - stats.lateCount - stats.absentCount) / stats.totalWorkingDays) * 100)
-      : 0;
+    const onTimeRate =
+      stats.totalWorkingDays > 0
+        ? Math.round(
+            ((stats.totalWorkingDays - stats.lateCount - stats.absentCount) /
+              stats.totalWorkingDays) *
+              100
+          )
+        : 0;
 
     res.json({
       success: true,
@@ -103,16 +109,25 @@ router.get('/profile', async (req, res, next) => {
           personalInfo: employee.personalInfo,
           employment: employee.employment,
           qrCode: employee.qrCode,
+          qrToken: (() => {
+            const qrSecret = process.env.QR_SECRET || employee.qrCode?.code;
+            if (!qrSecret) return null;
+            return generateQrToken({
+              employeeId: employee._id.toString(),
+              secret: qrSecret,
+            });
+          })(),
+          qrTokenExpiresIn: getQrWindowSeconds(),
           statistics: {
             ...stats,
-            onTimeRate
-          }
+            onTimeRate,
+          },
         },
         user: {
           email: user.email,
-          profile: user.profile
-        }
-      }
+          profile: user.profile,
+        },
+      },
     });
   } catch (error) {
     next(error);
@@ -130,22 +145,19 @@ router.put('/profile', async (req, res, next) => {
     const userIdObjectId = new ObjectId(userId);
     const tenantIdObjectId = new ObjectId(tenantId);
 
-    // Lấy employee hiện tại
     const employee = await db.collection('employees').findOne({
       userId: userIdObjectId,
-      tenantId: tenantIdObjectId
+      tenantId: tenantIdObjectId,
     });
 
     if (!employee) {
       return res.status(404).json({
         success: false,
-        message: 'Employee not found'
+        message: 'Employee not found',
       });
     }
 
-    // Cập nhật thông tin
     const updateData = {};
-    
     if (req.body.firstName !== undefined) {
       updateData['personalInfo.firstName'] = req.body.firstName;
     }
@@ -176,58 +188,61 @@ router.put('/profile', async (req, res, next) => {
       updateData['personalInfo.emergencyContact'] = req.body.emergencyContact;
     }
 
-    // Cập nhật trong database
-    await db.collection('employees').updateOne(
-      { _id: employee._id, tenantId: tenantIdObjectId },
-      { $set: updateData }
-    );
+    await db
+      .collection('employees')
+      .updateOne({ _id: employee._id, tenantId: tenantIdObjectId }, { $set: updateData });
 
-    // Lấy lại thông tin đã cập nhật
     const updatedEmployee = await db.collection('employees').findOne({
       _id: employee._id,
-      tenantId: tenantIdObjectId
+      tenantId: tenantIdObjectId,
     });
 
-    // Tính toán lại statistics
     const today = new Date();
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-    
-    const attendanceStats = await db.collection('attendance').aggregate([
-      {
-        $match: {
-          tenantId: tenantIdObjectId,
-          employeeId: updatedEmployee._id,
-          date: { $gte: startOfMonth }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          totalWorkingDays: { $sum: 1 },
-          totalHours: { $sum: { $divide: ['$workDuration', 60] } },
-          lateCount: { $sum: { $cond: [{ $eq: ['$status', 'LATE'] }, 1, 0] } },
-          absentCount: { $sum: { $cond: [{ $eq: ['$status', 'ABSENT'] }, 1, 0] } },
-          overtimeHours: { $sum: { $divide: ['$overtimeDuration', 60] } }
-        }
-      }
-    ]).toArray();
+
+    const attendanceStats = await db
+      .collection('attendance')
+      .aggregate([
+        {
+          $match: {
+            tenantId: tenantIdObjectId,
+            employeeId: updatedEmployee._id,
+            date: { $gte: startOfMonth },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalWorkingDays: { $sum: 1 },
+            totalHours: { $sum: { $divide: ['$workDuration', 60] } },
+            lateCount: { $sum: { $cond: [{ $eq: ['$status', 'LATE'] }, 1, 0] } },
+            absentCount: { $sum: { $cond: [{ $eq: ['$status', 'ABSENT'] }, 1, 0] } },
+            overtimeHours: { $sum: { $divide: ['$overtimeDuration', 60] } },
+          },
+        },
+      ])
+      .toArray();
 
     const stats = attendanceStats[0] || {
       totalWorkingDays: 0,
       totalHours: 0,
       lateCount: 0,
       absentCount: 0,
-      overtimeHours: 0
+      overtimeHours: 0,
     };
 
-    const onTimeRate = stats.totalWorkingDays > 0
-      ? Math.round(((stats.totalWorkingDays - stats.lateCount - stats.absentCount) / stats.totalWorkingDays) * 100)
-      : 0;
+    const onTimeRate =
+      stats.totalWorkingDays > 0
+        ? Math.round(
+            ((stats.totalWorkingDays - stats.lateCount - stats.absentCount) /
+              stats.totalWorkingDays) *
+              100
+          )
+        : 0;
 
-    // Lấy user info
     const user = await db.collection('users').findOne({
       _id: userIdObjectId,
-      tenantId: tenantIdObjectId
+      tenantId: tenantIdObjectId,
     });
 
     res.json({
@@ -241,14 +256,14 @@ router.put('/profile', async (req, res, next) => {
           qrCode: updatedEmployee.qrCode,
           statistics: {
             ...stats,
-            onTimeRate
-          }
+            onTimeRate,
+          },
         },
         user: {
           email: user.email,
-          profile: user.profile
-        }
-      }
+          profile: user.profile,
+        },
+      },
     });
   } catch (error) {
     next(error);
@@ -268,7 +283,7 @@ router.post('/:employeeId/leave-requests', async (req, res, next) => {
     if (!type || !startDate || !endDate || !reason) {
       return res.status(400).json({
         success: false,
-        message: 'type, startDate, endDate và reason là bắt buộc'
+        message: 'type, startDate, endDate và reason là bắt buộc',
       });
     }
 
@@ -277,17 +292,16 @@ router.post('/:employeeId/leave-requests', async (req, res, next) => {
     const employeeObjectId = new ObjectId(employeeId);
     const userObjectId = new ObjectId(userId);
 
-    // Đảm bảo employee thuộc tenant hiện tại và gắn với user hiện tại
     const employee = await db.collection('employees').findOne({
       _id: employeeObjectId,
       tenantId: tenantObjectId,
-      userId: userObjectId
+      userId: userObjectId,
     });
 
     if (!employee) {
       return res.status(404).json({
         success: false,
-        message: 'Employee not found or not owned by current user'
+        message: 'Employee not found or not owned by current user',
       });
     }
 
@@ -296,16 +310,16 @@ router.post('/:employeeId/leave-requests', async (req, res, next) => {
       tenantId: tenantObjectId,
       employeeId: employeeObjectId,
       userId: userObjectId,
-      type, // ví dụ: ANNUAL, SICK, UNPAID, OTHER
+      type,
       startDate: new Date(startDate),
       endDate: new Date(endDate),
       reason,
-      status: 'PENDING', // PENDING | APPROVED | REJECTED
+      status: 'PENDING',
       createdAt: now,
       updatedAt: now,
       reviewedBy: null,
       reviewedAt: null,
-      reviewComment: null
+      reviewComment: null,
     };
 
     const result = await db.collection('leaveRequests').insertOne(doc);
@@ -313,8 +327,8 @@ router.post('/:employeeId/leave-requests', async (req, res, next) => {
     res.status(201).json({
       success: true,
       data: {
-        id: result.insertedId.toString()
-      }
+        id: result.insertedId.toString(),
+      },
     });
   } catch (error) {
     next(error);
@@ -340,7 +354,7 @@ router.get('/:employeeId/leave-requests', async (req, res, next) => {
       .find({
         tenantId: tenantObjectId,
         employeeId: employeeObjectId,
-        userId: userObjectId
+        userId: userObjectId,
       })
       .sort({ createdAt: -1 })
       .toArray();
@@ -348,8 +362,8 @@ router.get('/:employeeId/leave-requests', async (req, res, next) => {
     res.json({
       success: true,
       data: {
-        requests
-      }
+        requests,
+      },
     });
   } catch (error) {
     next(error);
@@ -369,7 +383,7 @@ router.post('/:employeeId/attendance-adjustments', async (req, res, next) => {
     if (!date || !reason) {
       return res.status(400).json({
         success: false,
-        message: 'date và reason là bắt buộc'
+        message: 'date và reason là bắt buộc',
       });
     }
 
@@ -378,29 +392,27 @@ router.post('/:employeeId/attendance-adjustments', async (req, res, next) => {
     const employeeObjectId = new ObjectId(employeeId);
     const userObjectId = new ObjectId(userId);
 
-    // Đảm bảo employee thuộc tenant hiện tại và gắn với user hiện tại
     const employee = await db.collection('employees').findOne({
       _id: employeeObjectId,
       tenantId: tenantObjectId,
-      userId: userObjectId
+      userId: userObjectId,
     });
 
     if (!employee) {
       return res.status(404).json({
         success: false,
-        message: 'Employee not found or not owned by current user'
+        message: 'Employee not found or not owned by current user',
       });
     }
 
     const targetDate = new Date(date);
     targetDate.setHours(0, 0, 0, 0);
 
-    // Tìm attendance record của ngày đó (nếu có) để tham chiếu
     const attendance = await db.collection('attendance').findOne(
       {
         tenantId: tenantObjectId,
         employeeId: employeeObjectId,
-        date: targetDate
+        date: targetDate,
       },
       { sort: { createdAt: -1 } }
     );
@@ -415,12 +427,12 @@ router.post('/:employeeId/attendance-adjustments', async (req, res, next) => {
       proposedClockIn: proposedClockIn ? new Date(proposedClockIn) : null,
       proposedClockOut: proposedClockOut ? new Date(proposedClockOut) : null,
       reason,
-      status: 'PENDING', // PENDING | APPROVED | REJECTED
+      status: 'PENDING',
       createdAt: now,
       updatedAt: now,
       reviewedBy: null,
       reviewedAt: null,
-      reviewComment: null
+      reviewComment: null,
     };
 
     const result = await db.collection('attendanceAdjustments').insertOne(doc);
@@ -428,8 +440,8 @@ router.post('/:employeeId/attendance-adjustments', async (req, res, next) => {
     res.status(201).json({
       success: true,
       data: {
-        id: result.insertedId.toString()
-      }
+        id: result.insertedId.toString(),
+      },
     });
   } catch (error) {
     next(error);
@@ -455,7 +467,7 @@ router.get('/:employeeId/attendance-adjustments', async (req, res, next) => {
       .find({
         tenantId: tenantObjectId,
         employeeId: employeeObjectId,
-        userId: userObjectId
+        userId: userObjectId,
       })
       .sort({ createdAt: -1 })
       .toArray();
@@ -463,8 +475,80 @@ router.get('/:employeeId/attendance-adjustments', async (req, res, next) => {
     res.json({
       success: true,
       data: {
-        adjustments
-      }
+        adjustments,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/employees/:employeeId/payslips
+ * Danh sách phiếu lương đã được duyệt của employee
+ */
+router.get('/:employeeId/payslips', async (req, res, next) => {
+  try {
+    const { employeeId } = req.params;
+    const { tenantId, userId } = req.user;
+    const { year, month } = req.query;
+    const db = getDatabase();
+
+    const tenantObjectId = new ObjectId(tenantId);
+    const employeeObjectId = new ObjectId(employeeId);
+    const userObjectId = new ObjectId(userId);
+
+    const employee = await db.collection('employees').findOne({
+      _id: employeeObjectId,
+      tenantId: tenantObjectId,
+      userId: userObjectId,
+    });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found or not owned by current user',
+      });
+    }
+
+    const query = {
+      tenantId: tenantObjectId,
+      employeeId: employeeObjectId,
+      status: 'APPROVED',
+    };
+
+    if (year) {
+      query.year = Number(year);
+    }
+
+    if (month) {
+      query.month = Number(month);
+    }
+
+    const payslips = await db
+      .collection('payslips')
+      .find(query)
+      .sort({ year: -1, month: -1 })
+      .toArray();
+
+    res.json({
+      success: true,
+      data: {
+        payslips: payslips.map((payslip) => ({
+          id: payslip._id.toString(),
+          employeeId: payslip.employeeId?.toString() || null,
+          year: payslip.year,
+          month: payslip.month,
+          currency: payslip.currency || 'VND',
+          status: payslip.status,
+          totals: payslip.totals || null,
+          earnings: payslip.earnings || [],
+          deductions: payslip.deductions || [],
+          issuedAt: payslip.issuedAt || null,
+          approvedAt: payslip.approvedAt || null,
+          notes: payslip.notes || null,
+        })),
+      },
     });
   } catch (error) {
     next(error);
@@ -486,21 +570,74 @@ router.get('/:employeeId/qr-code', async (req, res, next) => {
 
     const employee = await db.collection('employees').findOne({
       _id: employeeObjectId,
-      tenantId: tenantObjectId
+      tenantId: tenantObjectId,
     });
 
     if (!employee) {
       return res.status(404).json({
         success: false,
-        message: 'Employee not found'
+        message: 'Employee not found',
+      });
+    }
+
+    const qrSecret = process.env.QR_SECRET || employee.qrCode?.code;
+    const qrToken = qrSecret
+      ? generateQrToken({
+          employeeId: employee._id.toString(),
+          secret: qrSecret,
+        })
+      : null;
+
+    res.json({
+      success: true,
+      data: {
+        qrCode: employee.qrCode || null,
+        qrToken,
+        expiresIn: getQrWindowSeconds(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/employees/:id
+ * Lấy thông tin chi tiết của employee
+ */
+router.get('/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { tenantId } = req.user;
+    const db = getDatabase();
+
+    const tenantObjectId = new ObjectId(tenantId);
+    const employeeObjectId = new ObjectId(id);
+
+    const employee = await db.collection('employees').findOne({
+      _id: employeeObjectId,
+      tenantId: tenantObjectId,
+    });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found',
       });
     }
 
     res.json({
       success: true,
       data: {
-        qrCode: employee.qrCode || null
-      }
+        employee: {
+          id: employee._id.toString(),
+          employeeId: employee.employeeId,
+          personalInfo: employee.personalInfo,
+          employment: employee.employment,
+          qrCode: employee.qrCode,
+          statistics: employee.statistics || {},
+        },
+      },
     });
   } catch (error) {
     next(error);

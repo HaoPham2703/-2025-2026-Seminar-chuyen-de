@@ -9,11 +9,12 @@ import { swaggerSpec } from './config/swagger.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 
 // Routes
+import adminRoutes from './routes/admin.js';
 import attendanceRoutes from './routes/attendance.js';
 import authRoutes from './routes/auth.js';
 import employeesRoutes from './routes/employees.js';
 import notificationRoutes from './routes/notifications.js';
-import adminRoutes from './routes/admin.js';
+import payrollsRoutes from './routes/payrolls.js';
 import schedulesRoutes from './routes/schedules.js';
 
 // Debug: Log khi import routes
@@ -87,6 +88,9 @@ app.get('/api', (req, res) => {
       employees: {
         'GET /api/employees/profile': 'Profile employee hiện tại',
         'GET /api/employees/:id': 'Chi tiết employee'
+      },
+      payrolls: {
+        'GET /api/payrolls/my': 'Danh sách phiếu lương của tôi'
       }
     },
     timestamp: new Date().toISOString()
@@ -100,6 +104,7 @@ app.use('/api/employees', employeesRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/schedules', schedulesRoutes);
+app.use('/api/payrolls', payrollsRoutes);
 
 // Debug: Log registered routes
 console.log('📋 Registered API routes:');
@@ -108,6 +113,7 @@ console.log('  - /api/attendance');
 console.log('  - /api/employees');
 console.log('  - /api/notifications');
 console.log('  - /api/admin (with /dashboard, /employees, /attendance/today, /leave-requests)');
+console.log('  - /api/payrolls');
 
 // 404 handler
 app.use(notFoundHandler);

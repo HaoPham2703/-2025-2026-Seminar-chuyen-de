@@ -1,21 +1,21 @@
-import { useState, useEffect, useCallback } from "react";
-import { View, Text, StyleSheet, ActivityIndicator, Alert, TouchableOpacity } from "react-native";
-import Animated, { FadeInDown, FadeIn } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
-import { QrCode } from "lucide-react-native";
-import ClockButton from "./ClockButton";
-import TimeStats from "./TimeStats";
-import LocationStatus from "./LocationStatus";
-import ConfirmModal from "./ConfirmModal";
-import StatusNotification from "./StatusNotification";
-import EmployeeQrCard from "./EmployeeQrCard";
-import { getEmployeeProfile } from "@/src/services/employeeService";
-import { getCurrentAttendance, clockIn, clockOut, type AttendanceRecord } from "@/src/services/attendanceService";
-import { getAuthToken } from "@/src/services/api";
 import { RefreshableScrollView } from "@/components/refreshable-scroll-view";
 import { useTabReload } from "@/hooks/use-tab-reload";
 import { useTheme } from "@/src/hooks/use-theme";
+import { getAuthToken } from "@/src/services/api";
+import { clockIn, clockOut, getCurrentAttendance, type AttendanceRecord } from "@/src/services/attendanceService";
+import { getEmployeeProfile, getEmployeeQrCode } from "@/src/services/employeeService";
+import { useFocusEffect } from "expo-router";
+import { QrCode } from "lucide-react-native";
+import { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import Animated, { FadeInDown } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import ClockButton from "./ClockButton";
+import ConfirmModal from "./ConfirmModal";
+import EmployeeQrCard from "./EmployeeQrCard";
+import LocationStatus from "./LocationStatus";
+import StatusNotification from "./StatusNotification";
+import TimeStats from "./TimeStats";
 
 const Index = () => {
   const { colors } = useTheme();
@@ -25,13 +25,15 @@ const Index = () => {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [notification, setNotification] = useState<"success" | "late" | null>(null);
   const [clockInTime, setClockInTime] = useState<Date | null>(null);
-  const [timerInterval, setTimerInterval] = useState<NodeJS.Timeout | null>(null);
+  const [timerInterval, setTimerInterval] = useState<ReturnType<typeof setInterval> | null>(null);
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState<string>("");
   const [userRole, setUserRole] = useState<string>("");
   const [employeeId, setEmployeeId] = useState<string>("");
   const [employeeCode, setEmployeeCode] = useState<string>("");
   const [qrCode, setQrCode] = useState<string | null>(null);
+  const [qrCountdown, setQrCountdown] = useState<number | null>(null);
+  const [qrExpiresIn, setQrExpiresIn] = useState<number | null>(null);
   const [showQrModal, setShowQrModal] = useState(false);
   const [currentAttendance, setCurrentAttendance] = useState<AttendanceRecord | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -43,7 +45,7 @@ const Index = () => {
     }
   }, [employeeId]);
 
-  const { scrollViewRef } = useTabReload(handleReload, 'index');
+  useTabReload(handleReload, 'index');
 
   // Load user info and current attendance
   useEffect(() => {
@@ -88,7 +90,9 @@ const Index = () => {
           setCurrentAttendance(attendanceData.attendance);
           if (attendanceData.attendance && attendanceData.isClockedIn && !attendanceData.isClockedOut) {
             setIsClockedIn(true);
-            setClockInTime(new Date(attendanceData.attendance.clockIn.time));
+            if (attendanceData.attendance.clockIn?.time) {
+              setClockInTime(new Date(attendanceData.attendance.clockIn.time));
+            }
           } else {
             setIsClockedIn(false);
             setClockInTime(null);
@@ -134,7 +138,9 @@ const Index = () => {
       setUserRole(profileData.employee.employment.position || "Employee");
       setEmployeeId(profileData.employee.id);
       setEmployeeCode(profileData.employee.employeeId || "");
-      setQrCode(profileData.employee.qrCode?.code || null);
+      setQrCode(profileData.employee.qrToken || profileData.employee.qrCode?.code || null);
+      setQrExpiresIn(profileData.employee.qrTokenExpiresIn ?? null);
+      setQrCountdown(profileData.employee.qrTokenExpiresIn ?? null);
 
       // Load current attendance
       if (profileData.employee.id) {
@@ -142,13 +148,15 @@ const Index = () => {
           const attendanceData = await getCurrentAttendance(profileData.employee.id);
           if (attendanceData.attendance && attendanceData.isClockedIn && !attendanceData.isClockedOut) {
             setIsClockedIn(true);
-            setClockInTime(new Date(attendanceData.attendance.clockIn.time));
+            if (attendanceData.attendance.clockIn?.time) {
+              setClockInTime(new Date(attendanceData.attendance.clockIn.time));
+            }
             
             // Start timer to update working hours
             const interval = setInterval(() => {
               setCurrentTime(new Date());
             }, 1000);
-            setTimerInterval(interval);
+            setTimerInterval(interval as ReturnType<typeof setInterval>);
           }
           setCurrentAttendance(attendanceData.attendance);
         } catch (attendanceError: any) {
@@ -215,6 +223,48 @@ const Index = () => {
     return clockInHour > 9 || (clockInHour === 9 && clockInMinute > 0);
   };
 
+  useEffect(() => {
+    if (!employeeId) return;
+
+    const refreshQr = async () => {
+      try {
+        const qrResponse = await getEmployeeQrCode(employeeId);
+        if (qrResponse?.qrToken) {
+          setQrCode(qrResponse.qrToken);
+        }
+        if (typeof qrResponse?.expiresIn === "number") {
+          setQrExpiresIn(qrResponse.expiresIn);
+          setQrCountdown(qrResponse.expiresIn);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    refreshQr();
+
+    const intervalMs = Math.max((qrExpiresIn ?? 60) * 1000, 30000);
+    const interval = setInterval(refreshQr, intervalMs);
+
+    return () => clearInterval(interval);
+  }, [employeeId, qrExpiresIn]);
+
+  useEffect(() => {
+    if (qrCountdown === null) return;
+
+    const timer = setInterval(() => {
+      setQrCountdown((prev) => {
+        if (prev === null) return prev;
+        if (prev <= 1) {
+          return qrExpiresIn ?? 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [qrCountdown, qrExpiresIn]);
+
   const handleClockAction = async () => {
     if (isClockedIn) {
       setShowConfirmModal(true);
@@ -242,7 +292,7 @@ const Index = () => {
         const interval = setInterval(() => {
           setCurrentTime(new Date());
         }, 1000);
-        setTimerInterval(interval);
+        setTimerInterval(interval as ReturnType<typeof setInterval>);
 
         // Reload attendance data
         const attendanceData = await getCurrentAttendance(employeeId);
@@ -346,6 +396,7 @@ const Index = () => {
           </TouchableOpacity>
         </Animated.View>
 
+
         {/* Location Status */}
         <LocationStatus isNearOffice={true} />
 
@@ -381,6 +432,8 @@ const Index = () => {
         qrValue={qrCode}
         employeeName={userName}
         employeeCode={employeeCode}
+        employeeId={employeeId}
+        qrExpiresIn={qrExpiresIn ?? undefined}
       />
     </View>
   );

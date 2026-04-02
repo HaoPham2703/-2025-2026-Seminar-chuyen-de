@@ -91,6 +91,7 @@ async function removeAuthToken(): Promise<void> {
     await AsyncStorage.removeItem(TOKEN_KEY);
   } catch (error) {
     console.error('Error removing token:', error);
+    // Không throw — xóa thất bại không ảnh hưởng luồng logout
   }
 }
 

@@ -1,17 +1,28 @@
 import { Tabs } from 'expo-router';
-import React from 'react';
+import { Bell, Calendar, Folder, Home, QrCode, Settings, Wallet } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Home, Calendar, Bell, Folder, Settings } from 'lucide-react-native';
 
 import { CustomTabButton } from '@/components/custom-tab-button';
 import NotificationBadge from '@/src/components/NotificationBadge';
 import { useNotifications } from '@/src/contexts/NotificationContext';
+import { getStoredRole } from '@/src/services/authService';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { unreadCount } = useNotifications();
-  
+  const [isManager, setIsManager] = useState(false);
+
+  useEffect(() => {
+    const loadRole = async () => {
+      const role = await getStoredRole();
+      setIsManager((role || '').toLowerCase() === 'manager');
+    };
+
+    loadRole();
+  }, []);
+
   return (
     <Tabs
       screenOptions={{
@@ -20,8 +31,8 @@ export default function TabLayout() {
         tabBarStyle: [
           styles.tabBar,
           {
-            paddingBottom: Math.max(insets.bottom, 28), // Tăng lên 28 để nhích xuống nhiều hơn
-            height: 60 + Math.max(insets.bottom, 28), // Giảm height
+            paddingBottom: Math.max(insets.bottom, 28),
+            height: 60 + Math.max(insets.bottom, 28),
           },
         ],
         tabBarActiveTintColor: 'hsl(25, 30%, 20%)',
@@ -32,10 +43,10 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color, focused }) => (
-            <Home 
-              size={24} 
-              color={focused ? 'hsl(25, 30%, 20%)' : 'hsl(25, 15%, 50%)'} 
+          tabBarIcon: ({ focused }) => (
+            <Home
+              size={24}
+              color={focused ? 'hsl(25, 30%, 20%)' : 'hsl(25, 15%, 50%)'}
               strokeWidth={focused ? 2.5 : 2}
             />
           ),
@@ -45,10 +56,10 @@ export default function TabLayout() {
         name="attendance"
         options={{
           title: 'Attendance',
-          tabBarIcon: ({ color, focused }) => (
-            <Calendar 
-              size={24} 
-              color={focused ? 'hsl(25, 30%, 20%)' : 'hsl(25, 15%, 50%)'} 
+          tabBarIcon: ({ focused }) => (
+            <Calendar
+              size={24}
+              color={focused ? 'hsl(25, 30%, 20%)' : 'hsl(25, 15%, 50%)'}
               strokeWidth={focused ? 2.5 : 2}
             />
           ),
@@ -58,11 +69,11 @@ export default function TabLayout() {
         name="updates"
         options={{
           title: 'Updates',
-          tabBarIcon: ({ color, focused }) => (
+          tabBarIcon: ({ focused }) => (
             <View style={{ position: 'relative' }}>
-              <Bell 
-                size={24} 
-                color={focused ? 'hsl(25, 30%, 20%)' : 'hsl(25, 15%, 50%)'} 
+              <Bell
+                size={24}
+                color={focused ? 'hsl(25, 30%, 20%)' : 'hsl(25, 15%, 50%)'}
                 strokeWidth={focused ? 2.5 : 2}
               />
               <View style={{ position: 'absolute', top: -4, right: -4 }}>
@@ -76,10 +87,23 @@ export default function TabLayout() {
         name="resources"
         options={{
           title: 'Resources',
-          tabBarIcon: ({ color, focused }) => (
-            <Folder 
-              size={24} 
-              color={focused ? 'hsl(25, 30%, 20%)' : 'hsl(25, 15%, 50%)'} 
+          tabBarIcon: ({ focused }) => (
+            <Folder
+              size={24}
+              color={focused ? 'hsl(25, 30%, 20%)' : 'hsl(25, 15%, 50%)'}
+              strokeWidth={focused ? 2.5 : 2}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="payroll"
+        options={{
+          title: 'Payroll',
+          tabBarIcon: ({ focused }) => (
+            <Wallet
+              size={24}
+              color={focused ? 'hsl(25, 30%, 20%)' : 'hsl(25, 15%, 50%)'}
               strokeWidth={focused ? 2.5 : 2}
             />
           ),
@@ -89,19 +113,34 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color, focused }) => (
-            <Settings 
-              size={24} 
-              color={focused ? 'hsl(25, 30%, 20%)' : 'hsl(25, 15%, 50%)'} 
+          tabBarIcon: ({ focused }) => (
+            <Settings
+              size={24}
+              color={focused ? 'hsl(25, 30%, 20%)' : 'hsl(25, 15%, 50%)'}
               strokeWidth={focused ? 2.5 : 2}
             />
           ),
         }}
       />
+      {isManager && (
+        <Tabs.Screen
+          name="scan-qr"
+          options={{
+            title: 'Quét QR',
+            tabBarIcon: ({ focused }) => (
+              <QrCode
+                size={24}
+                color={focused ? 'hsl(25, 30%, 20%)' : 'hsl(25, 15%, 50%)'}
+                strokeWidth={focused ? 2.5 : 2}
+              />
+            ),
+          }}
+        />
+      )}
       <Tabs.Screen
         name="explore"
         options={{
-          href: null, // Ẩn tab explore khỏi navigation bar
+          href: null,
         }}
       />
     </Tabs>

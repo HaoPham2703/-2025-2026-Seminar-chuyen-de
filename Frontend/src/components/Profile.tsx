@@ -1,36 +1,36 @@
-import {
-    Award,
-    Briefcase,
-    Calendar,
-    Clock,
-    Edit,
-    HelpCircle,
-    Info,
-    LogOut,
-    Mail,
-    Settings,
-    User,
-    Bell,
-    QrCode
-} from "lucide-react-native";
-import { useEffect, useState, useCallback } from "react";
-import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import Animated, { FadeInDown } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
-import { logout } from "@/src/services/authService";
-import { getEmployeeProfile, EmployeeProfileResponse } from "@/src/services/employeeService";
-import { getAuthToken } from "@/src/services/api";
-import EditProfileModal from "./EditProfileModal";
-import SettingsScreen from "./SettingsScreen";
-import NotificationCenter from "./NotificationCenter";
-import NotificationBadge from "./NotificationBadge";
-import EmployeeQrCard from "./EmployeeQrCard";
-import { useSettings } from "@/src/contexts/SettingsContext";
-import { useNotifications } from "@/src/contexts/NotificationContext";
 import { RefreshableScrollView } from "@/components/refreshable-scroll-view";
 import { useTabReload } from "@/hooks/use-tab-reload";
+import { useNotifications } from "@/src/contexts/NotificationContext";
+import { useSettings } from "@/src/contexts/SettingsContext";
 import { useTheme } from "@/src/hooks/use-theme";
+import { getAuthToken } from "@/src/services/api";
+import { logout } from "@/src/services/authService";
+import { EmployeeProfileResponse, getEmployeeProfile } from "@/src/services/employeeService";
+import { useRouter } from "expo-router";
+import {
+  Award,
+  Bell,
+  Briefcase,
+  Calendar,
+  Clock,
+  Edit,
+  HelpCircle,
+  Info,
+  LogOut,
+  Mail,
+  QrCode,
+  Settings,
+  User
+} from "lucide-react-native";
+import { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Alert, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import Animated, { FadeInDown } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import EditProfileModal from "./EditProfileModal";
+import EmployeeQrCard from "./EmployeeQrCard";
+import NotificationBadge from "./NotificationBadge";
+import NotificationCenter from "./NotificationCenter";
+import SettingsScreen from "./SettingsScreen";
 
 interface MenuItemProps {
   icon: React.ReactNode;
@@ -163,7 +163,28 @@ const Profile = () => {
     setShowQrModal(true);
   };
 
+  const performLogout = async () => {
+    try {
+      await logout();
+    } catch (error: any) {
+      console.error("Logout warning:", error);
+    }
+    // Luôn navigate về login bất kể logout có lỗi hay không
+    router.replace('/login');
+  };
+
   const handleLogout = () => {
+    // Trên web, Alert.alert không hỗ trợ callback buttons như native
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined'
+        ? window.confirm('Bạn có chắc chắn muốn đăng xuất?')
+        : true;
+      if (confirmed) {
+        void performLogout();
+      }
+      return;
+    }
+
     Alert.alert(
       "Đăng xuất",
       "Bạn có chắc chắn muốn đăng xuất?",
@@ -175,17 +196,8 @@ const Profile = () => {
         {
           text: "Đăng xuất",
           style: "destructive",
-          onPress: async () => {
-            try {
-              // Xóa token khỏi AsyncStorage
-              await logout();
-              
-              // Navigate về màn hình login
-              router.replace('/login');
-            } catch (error: any) {
-              console.error("Logout error:", error);
-              Alert.alert("Lỗi", "Không thể đăng xuất. Vui lòng thử lại.");
-            }
+          onPress: () => {
+            void performLogout();
           },
         },
       ]
@@ -219,6 +231,7 @@ const Profile = () => {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <RefreshableScrollView
+        ref={scrollViewRef}
         contentContainerStyle={[
           styles.scrollContent,
           { paddingTop: Math.max(insets.top + 20, 40) }
@@ -383,9 +396,10 @@ const Profile = () => {
       <EmployeeQrCard
         visible={showQrModal}
         onClose={() => setShowQrModal(false)}
-        qrValue={profileData.employee.qrCode?.code || null}
+        qrValue={profileData.employee.qrToken || profileData.employee.qrCode?.code || null}
         employeeName={fullName}
         employeeCode={employeeId}
+        employeeId={profileData.employee.id}
       />
     </View>
   );

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useLanguage } from '../contexts/LanguageContext'
 import { adminService, type Employee } from '../services/adminService'
 import { t } from '../utils/i18n'
-import { useLanguage } from '../contexts/LanguageContext'
 
 interface AttendanceRecord {
   _id: string
@@ -30,7 +30,6 @@ interface AttendanceRecordWithEmployee extends AttendanceRecord {
 
 export default function Attendance() {
   const [records, setRecords] = useState<AttendanceRecordWithEmployee[]>([])
-  const [employees, setEmployees] = useState<Map<string, Employee>>(new Map())
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
@@ -52,8 +51,6 @@ export default function Attendance() {
       employeesData.employees.forEach((emp) => {
         employeesMap.set(emp._id, emp)
       })
-      setEmployees(employeesMap)
-      
       // Load attendance records
       console.log('🔄 Loading attendance records...')
       const attendanceData = await adminService.getTodayAttendance()
@@ -87,10 +84,32 @@ export default function Attendance() {
   }
 
   const formatDuration = (minutes?: number) => {
-    if (!minutes) return '-'
+    if (minutes === undefined || minutes === null) return '-'
     const hours = Math.floor(minutes / 60)
     const mins = minutes % 60
-    return `${hours}h ${mins}m`
+    const hoursStr = String(hours).padStart(2, '0')
+    const minsStr = String(mins).padStart(2, '0')
+    return `${hoursStr}:${minsStr}`
+  }
+
+  const getWorkDurationMinutes = (record: AttendanceRecord) => {
+    if (record.workDuration !== undefined && record.workDuration !== null) {
+      return record.workDuration
+    }
+    if (!record.clockIn?.time || !record.clockOut?.time) return undefined
+
+    const toDate = (timeValue: string) => {
+      if (timeValue.includes('T') || timeValue.includes('-')) {
+        return new Date(timeValue)
+      }
+      return new Date(`${selectedDate}T${timeValue}`)
+    }
+
+    const start = toDate(record.clockIn.time)
+    const end = toDate(record.clockOut.time)
+    const diffMs = end.getTime() - start.getTime()
+    if (Number.isNaN(diffMs) || diffMs <= 0) return 0
+    return Math.floor(diffMs / 60000)
   }
 
   const getStatusBadge = (status: string) => {
@@ -259,7 +278,7 @@ export default function Attendance() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
-                        {formatDuration(record.workDuration)}
+                        {formatDuration(getWorkDurationMinutes(record))}
                       </div>
                       {record.overtimeDuration && record.overtimeDuration > 0 && (
                         <div className="text-xs text-orange-600">

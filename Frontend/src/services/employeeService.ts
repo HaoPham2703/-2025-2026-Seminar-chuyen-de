@@ -2,7 +2,7 @@
  * Employee Service
  */
 
-import { apiFetch, ApiResponse } from './api';
+import { apiFetch } from './api';
 
 export interface EmployeeProfile {
   id: string;
@@ -41,6 +41,8 @@ export interface EmployeeProfile {
     expiresAt: string;
     isActive: boolean;
   };
+  qrToken?: string | null;
+  qrTokenExpiresIn?: number;
   statistics: {
     totalWorkingDays: number;
     totalHours: number;
@@ -78,11 +80,13 @@ export async function getEmployeeProfile(): Promise<EmployeeProfileResponse> {
 }
 
 export interface EmployeeQrCode {
-  code: string;
+  code?: string;
   qrImageUrl?: string;
   generatedAt?: string;
   expiresAt?: string;
   isActive?: boolean;
+  qrToken?: string | null;
+  expiresIn?: number;
 }
 
 /**
@@ -90,12 +94,22 @@ export interface EmployeeQrCode {
  * (Sử dụng cho màn QR cá nhân nếu cần load lại độc lập với profile)
  */
 export async function getEmployeeQrCode(employeeId: string): Promise<EmployeeQrCode | null> {
-  const response = await apiFetch<{ qrCode: EmployeeQrCode | null }>(
-    `/employees/${employeeId}/qr-code`
-  );
+  const response = await apiFetch<{
+    qrCode: EmployeeQrCode | null;
+    qrToken?: string | null;
+    expiresIn?: number;
+  }>(`/employees/${employeeId}/qr-code`);
 
   if (response.success && response.data) {
-    return response.data.qrCode ?? null;
+    const { qrCode, qrToken, expiresIn } = response.data;
+
+    if (!qrCode && !qrToken) return null;
+
+    return {
+      ...(qrCode ?? {}),
+      qrToken: qrToken ?? qrCode?.qrToken ?? null,
+      expiresIn: expiresIn ?? qrCode?.expiresIn,
+    };
   }
 
   throw new Error(response.message || 'Failed to get employee QR code');
@@ -114,6 +128,50 @@ export async function getEmployeeById(employeeId: string): Promise<{ employee: E
   }
 
   throw new Error(response.message || 'Failed to get employee');
+}
+
+export interface PayslipTotals {
+  gross: number;
+  net: number;
+}
+
+export interface PayslipLineItem {
+  label: string;
+  amount: number;
+}
+
+export interface Payslip {
+  id: string;
+  employeeId: string | null;
+  year: number;
+  month: number;
+  currency: string;
+  status: string;
+  totals: PayslipTotals | null;
+  earnings: PayslipLineItem[];
+  deductions: PayslipLineItem[];
+  issuedAt?: string | null;
+  approvedAt?: string | null;
+  notes?: string | null;
+}
+
+export async function getPayslips(
+  employeeId: string,
+  params?: { year?: number; month?: number }
+): Promise<Payslip[]> {
+  const query = new URLSearchParams();
+  if (params?.year) query.set('year', String(params.year));
+  if (params?.month) query.set('month', String(params.month));
+
+  const response = await apiFetch<{ payslips: Payslip[] }>(
+    `/employees/${employeeId}/payslips${query.toString() ? `?${query.toString()}` : ''}`
+  );
+
+  if (response.success && response.data) {
+    return response.data.payslips;
+  }
+
+  throw new Error(response.message || 'Failed to load payslips');
 }
 
 export interface UpdateProfileRequest {

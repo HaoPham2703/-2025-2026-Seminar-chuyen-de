@@ -48,7 +48,14 @@ function sanitizeAttendanceRecord(record) {
  *               employeeId:
  *                 type: string
  *               location:
- *                 type: string
+ *                 type: object
+ *                 properties:
+ *                   latitude:
+ *                     type: number
+ *                   longitude:
+ *                     type: number
+ *                   address:
+ *                     type: string
  *               qrCode:
  *                 type: string
  *               method:
@@ -65,7 +72,8 @@ function sanitizeAttendanceRecord(record) {
 router.post('/clock-in', async (req, res, next) => {
   try {
     const { employeeId, location, qrCode, method = 'MOBILE_APP' } = req.body;
-    const { tenantId, userId } = req.user;
+    const requiresQrValidation = method === 'QR_SCAN';
+    const { tenantId } = req.user;
 
     if (!employeeId) {
       return res.status(400).json({
@@ -91,12 +99,46 @@ router.post('/clock-in', async (req, res, next) => {
       });
     }
 
-    // Kiểm tra QR code nếu có
-    if (qrCode && employee.qrCode.code !== qrCode) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid QR code'
+    if (requiresQrValidation) {
+      if (!qrCode) {
+        return res.status(400).json({
+          success: false,
+          message: 'QR code is required'
+        });
+      }
+
+      const qrSecret = process.env.QR_SECRET || employee.qrCode?.code;
+      if (!qrSecret) {
+        return res.status(400).json({
+          success: false,
+          message: 'QR secret is not configured'
+        });
+      }
+
+      const isValid = validateQrToken({
+        token: qrCode,
+        employeeId: employee._id.toString(),
+        secret: qrSecret
       });
+
+      if (!isValid) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid or expired QR code'
+        });
+      }
+
+      const geofenceCheck = ensureWithinGeofence(location);
+      if (!geofenceCheck.ok) {
+        return res.status(400).json({
+          success: false,
+          message: geofenceCheck.message || 'Outside allowed geofence',
+          data: {
+            distanceMeters: geofenceCheck.distanceMeters,
+            radiusMeters: geofenceCheck.radiusMeters
+          }
+        });
+      }
     }
 
     // Lấy ngày hiện tại (chỉ lấy phần date, không có time)
@@ -149,7 +191,7 @@ router.post('/clock-in', async (req, res, next) => {
     const attendanceData = {
       tenantId: tenantObjectId,
       employeeId: employeeObjectId,
-      userId: new ObjectId(userId),
+      userId: new ObjectId(req.user.userId),
       date: today,
       clockIn: {
         time: clockInTime,
@@ -192,11 +234,13 @@ router.post('/clock-in', async (req, res, next) => {
 /**
  * POST /api/attendance/clock-out
  * Chấm công ra ca
+ * Body: { employeeId, location?, qrCode?, method? }
  */
 router.post('/clock-out', async (req, res, next) => {
   try {
-    const { employeeId, location } = req.body;
-    const { tenantId, userId } = req.user;
+    const { employeeId, location, qrCode, method = 'MOBILE_APP' } = req.body;
+    const { tenantId } = req.user;
+    const requiresQrValidation = method === 'QR_SCAN';
 
     if (!employeeId) {
       return res.status(400).json({
@@ -230,6 +274,60 @@ router.post('/clock-out', async (req, res, next) => {
         success: false,
         message: 'Please clock in first'
       });
+    }
+
+    if (requiresQrValidation) {
+      if (!qrCode) {
+        return res.status(400).json({
+          success: false,
+          message: 'QR code is required'
+        });
+      }
+
+      const employee = await db.collection('employees').findOne({
+        _id: employeeObjectId,
+        tenantId: tenantObjectId
+      });
+
+      if (!employee) {
+        return res.status(404).json({
+          success: false,
+          message: 'Employee not found'
+        });
+      }
+
+      const qrSecret = process.env.QR_SECRET || employee.qrCode?.code;
+      if (!qrSecret) {
+        return res.status(400).json({
+          success: false,
+          message: 'QR secret is not configured'
+        });
+      }
+
+      const isValid = validateQrToken({
+        token: qrCode,
+        employeeId: employee._id.toString(),
+        secret: qrSecret
+      });
+
+      if (!isValid) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid or expired QR code'
+        });
+      }
+
+      const geofenceCheck = ensureWithinGeofence(location);
+      if (!geofenceCheck.ok) {
+        return res.status(400).json({
+          success: false,
+          message: geofenceCheck.message || 'Outside allowed geofence',
+          data: {
+            distanceMeters: geofenceCheck.distanceMeters,
+            radiusMeters: geofenceCheck.radiusMeters
+          }
+        });
+      }
     }
 
     if (attendance.clockOut) {
@@ -266,8 +364,8 @@ router.post('/clock-out', async (req, res, next) => {
           clockOut: {
             time: clockOutTime,
             location: location || null,
-            method: 'MOBILE_APP',
-            qrCode: attendance.clockIn.qrCode
+            method: method,
+            qrCode: qrCode || attendance.clockIn.qrCode
           },
           workDuration: netWorkMinutes,
           overtimeDuration,

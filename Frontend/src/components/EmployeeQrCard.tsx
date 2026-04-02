@@ -1,13 +1,16 @@
-import React from 'react';
+import { X } from 'lucide-react-native';
+import { useEffect, useRef, useState } from 'react';
 import {
   Modal,
-  View,
-  Text,
   StyleSheet,
+  Text,
   TouchableOpacity,
+  View,
 } from 'react-native';
-import { X } from 'lucide-react-native';
 import QRCode from 'react-native-qrcode-svg';
+import { getEmployeeQrCode } from '../services/employeeService';
+
+const QR_REFRESH_INTERVAL_SEC = 5;
 
 interface EmployeeQrCardProps {
   visible: boolean;
@@ -15,6 +18,7 @@ interface EmployeeQrCardProps {
   qrValue: string | null;
   employeeName: string;
   employeeCode?: string;
+  employeeId?: string;
 }
 
 export default function EmployeeQrCard({
@@ -23,10 +27,96 @@ export default function EmployeeQrCard({
   qrValue,
   employeeName,
   employeeCode,
+  employeeId,
 }: EmployeeQrCardProps) {
-  if (!visible) return null;
+  // Double buffering:
+  // currentQr = QR đang hiện trên màn hình
+  // nextQr    = QR kế tiếp, đang fetch trong nền
+  const [currentQr, setCurrentQr] = useState<string | null>(qrValue);
+  const [nextQr, setNextQr] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState(QR_REFRESH_INTERVAL_SEC);
 
-  const displayValue = qrValue || employeeCode || employeeName;
+  // Refs dùng trong setInterval (không bị stale closure)
+  const employeeIdRef = useRef(employeeId);
+  const nextQrRef = useRef<string | null>(null);
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastSwapAtRef = useRef<number>(Date.now());
+
+  // Đồng bộ refs
+  useEffect(() => { employeeIdRef.current = employeeId; }, [employeeId]);
+  useEffect(() => { nextQrRef.current = nextQr; }, [nextQr]);
+
+  // Khi prop qrValue thay đổi → set làm currentQr
+  useEffect(() => {
+    if (qrValue) setCurrentQr(qrValue);
+  }, [qrValue]);
+
+  // Fetch QR tiếp theo (chạy nền)
+  const fetchNextQr = () => {
+    if (!employeeIdRef.current) return;
+
+    getEmployeeQrCode(employeeIdRef.current)
+      .then((qrResponse) => {
+        if (qrResponse?.qrToken) {
+          setNextQr(qrResponse.qrToken);
+        }
+      })
+      .catch(() => {
+        // giữ QR hiện tại nếu fetch lỗi
+      });
+  };
+
+  // Swap: nextQr → currentQr, rồi fetch QR kế tiếp
+  const swapQr = () => {
+    const qrToShow = nextQrRef.current;
+    if (!qrToShow) {
+      // Chưa có nextQr → fetch ngay rồi chờ nhịp kế
+      fetchNextQr();
+      return;
+    }
+
+    // Swap: hiện QR mới
+    setCurrentQr(qrToShow);
+    setNextQr(null);
+
+    // Đồng bộ nhịp countdown theo thời điểm QR thực sự đổi
+    lastSwapAtRef.current = Date.now();
+    setCountdown(QR_REFRESH_INTERVAL_SEC);
+
+    // Fetch QR kế tiếp ngay
+    fetchNextQr();
+  };
+
+  const stopTimers = () => {
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    countdownIntervalRef.current = null;
+  };
+
+  useEffect(() => {
+    if (!visible || !employeeId) {
+      stopTimers();
+      return;
+    }
+
+    // Fetch QR kế tiếp ngay khi mở
+    fetchNextQr();
+
+    // Đồng bộ nhịp countdown theo mốc thời gian thực
+    lastSwapAtRef.current = Date.now();
+    setCountdown(QR_REFRESH_INTERVAL_SEC);
+
+    countdownIntervalRef.current = setInterval(() => {
+      const elapsedSec = Math.floor((Date.now() - lastSwapAtRef.current) / 1000);
+      const remaining = Math.max(QR_REFRESH_INTERVAL_SEC - elapsedSec, 0);
+      setCountdown(remaining);
+
+      if (remaining <= 0) {
+        swapQr();
+      }
+    }, 1000);
+
+    return stopTimers;
+  }, [visible, employeeId]);
 
   return (
     <Modal
@@ -49,7 +139,11 @@ export default function EmployeeQrCard({
 
           <View style={styles.qrWrapper}>
             <View style={styles.qrCard}>
-              <QRCode value={displayValue} size={220} />
+              {currentQr ? (
+                <QRCode value={currentQr} size={220} />
+              ) : (
+                <Text style={{ color: 'hsl(25, 15%, 50%)' }}>Đang tải...</Text>
+              )}
             </View>
           </View>
 
@@ -58,6 +152,7 @@ export default function EmployeeQrCard({
             {employeeCode ? (
               <Text style={styles.code}>Mã nhân viên: {employeeCode}</Text>
             ) : null}
+            <Text style={styles.expiresText}>Mã sẽ đổi sau {countdown}s</Text>
           </View>
         </View>
       </View>
@@ -126,5 +221,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'hsl(25, 15%, 50%)',
   },
+  expiresText: {
+    marginTop: 6,
+    fontSize: 12,
+    color: 'hsl(25, 15%, 40%)',
+  },
 });
-

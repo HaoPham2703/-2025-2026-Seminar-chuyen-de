@@ -687,3 +687,41 @@ codeZoneMobile/
 - ✅ **Modals**: Add Task modal với form validation
 - ✅ **i18n**: Đã thêm đầy đủ translations cho Settings, HelpCenter, Integrations (Vietnamese và English)
  - ✅ **Company Working Hours**: Tab riêng trong Settings cho phép admin cấu hình giờ làm việc chung (workStartTime, workEndTime, breakDuration, lateThreshold, overtimeThreshold) dùng API `/api/admin/attendance-settings`, có backend log lịch sử thay đổi trong `attendanceSettingsLogs`.
+
+### Bug 30: QR động vẫn không đổi sau fix lần 1
+- **File**: `Frontend/src/components/EmployeeQrCard.tsx`
+- **Root cause**: Có 2 vấn đề nghiêm trọng:
+  1. **`setInterval` bị reset mỗi lần modal đóng/mở**: Effect dependencies `[employeeId, visible]` khiến interval cleanup + restart liên tục → closure capture `fetchNewQr` reference cũ → `employeeId` bị stale → API gọi sai hoặc không gọi.
+  2. **`QRCode` component không re-render**: `react-native-qrcode-svg` giữ internal state, không tự cập nhật hình khi `value` prop thay đổi.
+- **Giải pháp**:
+  1. Dùng **refs** (`useRef`) cho interval IDs thay vì để trong effect → stable reference không bị reset.
+  2. **`fetchInFlightRef`**: boolean ref chặn overlap API calls khi modal đóng rồi mở lại.
+  3. **`useCallback` cho `fetchNewQr`**: đảm bảo function không bị re-create gây stale closure.
+  4. **`key={displayValue}` trên QRCode**: bắt buộc React unmount + mount lại component khi value thay đổi → QR vẽ lại hoàn toàn.
+  5. Chỉ khởi động interval khi modal `visible === true`, cleanup khi `false`.
+- **Flow đúng**: Mở modal → fetch ngay → 5s interval → API mới → state update → `key` đổi → QR unmount/remount → **hình QR thay đổi**.
+
+### Bug 29: QR động không tự đổi khi mở modal
+- **File**: `Frontend/src/components/EmployeeQrCard.tsx`
+- **Vấn đề**: QR chỉ đổi khi refresh lại trang, không tự đổi mỗi 5 giây khi modal đang mở.
+- **Root cause**: Logic cũ có 2 vấn đề:
+  1. `refreshQr` interval dùng `qrExpiresIn` từ prop — nhưng prop này được load từ lần mount Profile trước đó, không còn chính xác khi user mở modal sau đó.
+  2. Countdown timer và refresh interval chạy độc lập, gây trùng lặp và không đồng bộ.
+- **Giải pháp**: Thay thế hoàn toàn logic bằng:
+  - **1 interval cố định 5 giây** (`QR_REFRESH_INTERVAL_MS = 5000`) — đồng bộ với `QR_WINDOW_SECONDS` backend.
+  - Gọi `fetchNewQr()` ngay khi modal mở (`fetchNewQr` trong effect setup + `fetchNewQr` trong `setInterval`).
+  - Countdown chỉ hiển thị, không trigger refresh — countdown về 0 thì interval đã tự chạy rồi.
+  - Mỗi khi fetch thành công → reset countdown về 5.
+  - Bỏ prop `qrExpiresIn` không còn cần thiết.
+- **Files**: `EmployeeQrCard.tsx`, `Profile.tsx` (bỏ prop `qrExpiresIn`).
+
+### Bug 28: Fix undefined `userId` và sai `method` trong Attendance
+- **Files**: `Backend/routes/attendance.js`
+- **Bug 1 — `userId` not defined** (dòng 194):
+  - **Trước**: `userId: new ObjectId(userId)` → `userId` chưa được khai báo, sẽ throw `ReferenceError`
+  - **Sau**: `userId: new ObjectId(req.user.userId)` → lấy từ JWT token đã decode trong middleware `authenticateToken`
+- **Bug 2 — `clockOut.method` luôn là `'MOBILE_APP'`** (dòng 367):
+  - **Trước**: `method: 'MOBILE_APP'` hardcoded → bất kể user quét QR hay bấm nút thường, đều ghi nhầm method
+  - **Sau**: `method: method` → dùng đúng method từ request body (`QR_SCAN` hoặc `MOBILE_APP`)
+  - **Ngoài ra**: `qrCode: qrCode || attendance.clockIn.qrCode` → ưu tiên qrCode mới nhất khi clock-out bằng QR
+- **Root cause**: Cả 2 đều là lỗi copy-paste hoặc refactor sót. Không gây crash server (có try-catch), nhưng dữ liệu bị sai.

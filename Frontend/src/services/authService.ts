@@ -2,7 +2,10 @@
  * Authentication Service
  */
 
-import { apiFetch, setAuthToken, removeAuthToken, ApiResponse } from './api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { apiFetch, removeAuthToken, setAuthToken } from './api';
+
+const ROLE_KEY = '@dacn_user_role';
 
 export interface LoginRequest {
   email: string;
@@ -60,6 +63,10 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
   if (response.success && response.data) {
     // Lưu token
     await setAuthToken(response.data.token);
+    // Lưu role để điều hướng UI
+    if (response.data.user?.role) {
+      await AsyncStorage.setItem(ROLE_KEY, response.data.user.role);
+    }
     return response.data;
   }
 
@@ -71,6 +78,7 @@ export async function login(credentials: LoginRequest): Promise<LoginResponse> {
  */
 export async function logout(): Promise<void> {
   await removeAuthToken();
+  await AsyncStorage.removeItem(ROLE_KEY);
 }
 
 /**
@@ -84,6 +92,23 @@ export async function getCurrentUser(): Promise<User> {
   }
 
   throw new Error(response.message || 'Failed to get user info');
+}
+
+export async function getStoredRole(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(ROLE_KEY);
+  } catch (error) {
+    console.error('Error getting stored role:', error);
+    return null;
+  }
+}
+
+export async function setStoredRole(role: string): Promise<void> {
+  try {
+    await AsyncStorage.setItem(ROLE_KEY, role);
+  } catch (error) {
+    console.error('Error setting stored role:', error);
+  }
 }
 
 /**
