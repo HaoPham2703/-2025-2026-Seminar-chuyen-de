@@ -300,6 +300,65 @@ router.get('/leave-requests', async (req, res, next) => {
 });
 
 /**
+ * PATCH /api/admin/leave-requests/:id
+ * Duyệt hoặc từ chối yêu cầu nghỉ phép
+ * Body: { status: 'APPROVED' | 'REJECTED', reviewComment?: string }
+ */
+router.patch('/leave-requests/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { status, reviewComment } = req.body;
+    const { tenantId, userId } = req.user;
+
+    if (!status || !['APPROVED', 'REJECTED'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Status must be APPROVED or REJECTED',
+      });
+    }
+
+    const db = getDatabase();
+    const requestId = new ObjectId(id);
+
+    const request = await db.collection('leaveRequests').findOne({
+      _id: requestId,
+      tenantId: new ObjectId(tenantId),
+    });
+
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        message: 'Leave request not found',
+      });
+    }
+
+    if (request.status !== 'PENDING') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only pending requests can be reviewed',
+      });
+    }
+
+    await db.collection('leaveRequests').updateOne(
+      { _id: requestId },
+      {
+        $set: {
+          status,
+          reviewComment: reviewComment || null,
+          reviewedBy: new ObjectId(userId),
+          reviewedAt: new Date(),
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    res.json({ success: true, message: `Leave request ${status.toLowerCase()}` });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * GET /api/admin/attendance-settings
  * Lấy attendanceSettings của tenant (giờ làm việc công ty)
  */
@@ -435,6 +494,98 @@ router.get('/attendance-settings/logs', async (req, res, next) => {
         })),
       },
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/admin/payroll-formula-settings
+ * Lấy cấu hình công thức tính lương mặc định theo tenant
+ */
+router.get('/payroll-formula-settings', async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const tenant = await db.collection('tenants').findOne({ _id: tenantObjectId });
+    if (!tenant) {
+      return res.status(404).json({ success: false, message: 'Tenant not found' });
+    }
+
+    const settings = tenant.payrollFormulaSettings || {};
+
+    res.json({
+      success: true,
+      data: {
+        overtimeMultiplier: settings.overtimeMultiplier ?? 1.5,
+        latePenaltyPerLate: settings.latePenaltyPerLate ?? 50000,
+        bhxhRate: settings.bhxhRate ?? 0.08,
+        pitRate: settings.pitRate ?? 0,
+        standardWorkingDays: settings.standardWorkingDays ?? 22,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/admin/payroll-formula-settings
+ * Cập nhật cấu hình công thức tính lương mặc định theo tenant và lưu log
+ */
+router.put('/payroll-formula-settings', async (req, res, next) => {
+  try {
+    const { tenantId, userId } = req.user;
+    const {
+      overtimeMultiplier,
+      latePenaltyPerLate,
+      bhxhRate,
+      pitRate,
+      standardWorkingDays,
+      reason,
+    } = req.body;
+
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const tenant = await db.collection('tenants').findOne({ _id: tenantObjectId });
+    if (!tenant) {
+      return res.status(404).json({ success: false, message: 'Tenant not found' });
+    }
+
+    const before = tenant.payrollFormulaSettings || {};
+
+    const update = {};
+    if (overtimeMultiplier !== undefined)
+      update['payrollFormulaSettings.overtimeMultiplier'] = Number(overtimeMultiplier);
+    if (latePenaltyPerLate !== undefined)
+      update['payrollFormulaSettings.latePenaltyPerLate'] = Number(latePenaltyPerLate);
+    if (bhxhRate !== undefined) update['payrollFormulaSettings.bhxhRate'] = Number(bhxhRate);
+    if (pitRate !== undefined) update['payrollFormulaSettings.pitRate'] = Number(pitRate);
+    if (standardWorkingDays !== undefined)
+      update['payrollFormulaSettings.standardWorkingDays'] = Number(standardWorkingDays);
+
+    if (Object.keys(update).length === 0) {
+      return res.status(400).json({ success: false, message: 'No fields to update' });
+    }
+
+    await db.collection('tenants').updateOne({ _id: tenantObjectId }, { $set: update });
+
+    const updatedTenant = await db.collection('tenants').findOne({ _id: tenantObjectId });
+    const after = updatedTenant.payrollFormulaSettings || {};
+
+    await db.collection('payrollFormulaSettingsLogs').insertOne({
+      tenantId: tenantObjectId,
+      changedBy: new ObjectId(userId),
+      before,
+      after,
+      reason: reason || null,
+      changedAt: new Date(),
+    });
+
+    res.json({ success: true, data: after });
   } catch (error) {
     next(error);
   }

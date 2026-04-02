@@ -25,6 +25,10 @@ function sumAmount(items = []) {
   return items.reduce((total, item) => total + normalizeMoney(item.amount), 0);
 }
 
+function roundMoney(value) {
+  return Math.round(normalizeMoney(value));
+}
+
 /**
  * GET /api/payrolls/my
  * Lấy danh sách phiếu lương của nhân viên hiện tại
@@ -148,17 +152,157 @@ router.get('/employees', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), asy
     const employees = await db
       .collection('employees')
       .find({ tenantId: new ObjectId(tenantId) })
-      .project({ 'personalInfo.firstName': 1, 'personalInfo.lastName': 1, employeeId: 1, 'employment.position': 1 })
+      .project({ userId: 1, 'personalInfo.firstName': 1, 'personalInfo.lastName': 1, employeeId: 1, 'employment.position': 1 })
       .toArray();
+
+    // Lấy email từ users collection
+    const userIds = employees.map((e) => e.userId).filter(Boolean);
+    const users = await db
+      .collection('users')
+      .find({ _id: { $in: userIds } })
+      .project({ _id: 1, email: 1 })
+      .toArray();
+    const userMap = Object.fromEntries(users.map((u) => [u._id.toString(), u.email]));
 
     const list = employees.map((e) => ({
       id: e._id.toString(),
       name: `${e.personalInfo?.lastName || ''} ${e.personalInfo?.firstName || ''}`.trim(),
       code: e.employeeId || '',
       position: e.employment?.position || '',
+      email: e.userId ? (userMap[e.userId.toString()] || '') : '',
     }));
 
     res.json({ success: true, data: { employees: list } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/payrolls/auto-calculate
+ * Tính tự động gợi ý payroll từ attendance theo tháng
+ */
+router.post('/auto-calculate', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const {
+      employeeId,
+      month,
+      year,
+      baseSalary,
+      overtimeMultiplier,
+      latePenaltyPerLate,
+      bhxhRate,
+      pitRate,
+      standardWorkingDays,
+    } = req.body;
+
+    if (!employeeId || !month || !year) {
+      return res.status(400).json({
+        success: false,
+        message: 'employeeId, month, year are required',
+      });
+    }
+
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+    const employeeObjectId = new ObjectId(employeeId);
+
+    const employee = await db.collection('employees').findOne({
+      _id: employeeObjectId,
+      tenantId: tenantObjectId,
+    });
+
+    if (!employee) {
+      return res.status(404).json({ success: false, message: 'Employee not found' });
+    }
+
+    const formulaSettings = (await db.collection('tenants').findOne(
+      { _id: tenantObjectId },
+      { projection: { payrollFormulaSettings: 1 } }
+    ))?.payrollFormulaSettings || {};
+
+    const effectiveFormula = {
+      overtimeMultiplier: Number(
+        overtimeMultiplier ?? formulaSettings.overtimeMultiplier ?? 1.5
+      ),
+      latePenaltyPerLate: Number(
+        latePenaltyPerLate ?? formulaSettings.latePenaltyPerLate ?? 50000
+      ),
+      bhxhRate: Number(bhxhRate ?? formulaSettings.bhxhRate ?? 0.08),
+      pitRate: Number(pitRate ?? formulaSettings.pitRate ?? 0),
+      standardWorkingDays: Number(
+        standardWorkingDays ?? formulaSettings.standardWorkingDays ?? 22
+      ),
+    };
+
+    const monthNum = parseInt(month, 10);
+    const yearNum = parseInt(year, 10);
+    const start = new Date(Date.UTC(yearNum, monthNum - 1, 1, 0, 0, 0));
+    const end = new Date(Date.UTC(yearNum, monthNum, 1, 0, 0, 0));
+
+    const attendanceRows = await db.collection('attendance').find({
+      tenantId: tenantObjectId,
+      employeeId: employeeObjectId,
+      date: { $gte: start, $lt: end },
+    }).toArray();
+
+    const totalWorkMinutes = attendanceRows.reduce((sum, row) => sum + (Number(row.workDuration) || 0), 0);
+    const totalOvertimeMinutes = attendanceRows.reduce((sum, row) => sum + (Number(row.overtimeDuration) || 0), 0);
+    const lateCount = attendanceRows.filter((row) => row.status === 'LATE').length;
+    const attendanceDays = attendanceRows.filter((row) => Number(row.workDuration || 0) > 0).length;
+
+    const monthlyBaseSalary = roundMoney(baseSalary ?? employee.employment?.baseSalary ?? 0);
+    const standardHours = effectiveFormula.standardWorkingDays * 8;
+    const hourlyRate = standardHours > 0 ? monthlyBaseSalary / standardHours : 0;
+
+    const overtimePay = roundMoney(
+      (totalOvertimeMinutes / 60) * hourlyRate * effectiveFormula.overtimeMultiplier
+    );
+    const latePenalty = roundMoney(lateCount * effectiveFormula.latePenaltyPerLate);
+    const bhxh = roundMoney(monthlyBaseSalary * effectiveFormula.bhxhRate);
+    const pit = roundMoney(monthlyBaseSalary * effectiveFormula.pitRate);
+
+    const allowances = overtimePay > 0
+      ? [{ name: 'Tăng ca', amount: overtimePay }]
+      : [];
+
+    const deductions = [
+      ...(latePenalty > 0 ? [{ name: `Đi muộn (${lateCount} lần)`, amount: latePenalty }] : []),
+      ...(bhxh > 0 ? [{ name: `BHXH (${effectiveFormula.bhxhRate * 100}%)`, amount: bhxh }] : []),
+      ...(pit > 0 ? [{ name: `Thuế TNCN (${effectiveFormula.pitRate * 100}%)`, amount: pit }] : []),
+    ];
+
+    const allowancesTotal = sumAmount(allowances);
+    const deductionsTotal = sumAmount(deductions);
+    const netSalary = roundMoney(monthlyBaseSalary + allowancesTotal - deductionsTotal);
+
+    res.json({
+      success: true,
+      data: {
+        baseSalary: monthlyBaseSalary,
+        attendanceSummary: {
+          totalWorkMinutes,
+          totalOvertimeMinutes,
+          lateCount,
+          attendanceDays,
+          standardWorkingDays: effectiveFormula.standardWorkingDays,
+        },
+        suggestion: {
+          allowances,
+          deductions,
+          allowancesTotal,
+          deductionsTotal,
+          netSalary,
+          components: {
+            overtimePay,
+            latePenalty,
+            bhxh,
+            pit,
+          },
+        },
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -227,15 +371,293 @@ router.post('/', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req,
       approvedAt: approvedAt ? new Date(approvedAt) : now,
       createdAt: now,
       createdBy: new ObjectId(userId),
+      revisionOf: null,
+      revisedFrom: null,
+      revisedAt: null,
+      revisedBy: null,
+      reviseReason: null,
+      isSuperseded: false,
+      supersededBy: null,
+      updatedAt: now,
+      updatedBy: new ObjectId(userId),
     };
 
     const result = await db.collection('payrolls').insertOne(doc);
+
+    await db.collection('payroll_audits').insertOne({
+      tenantId: tenantObjectId,
+      payrollId: result.insertedId,
+      action: 'CREATE',
+      performedBy: new ObjectId(userId),
+      performedAt: now,
+      reason: null,
+      previousValues: null,
+      nextValues: {
+        employeeId: employeeObjectId,
+        period: doc.period,
+        baseSalary: doc.baseSalary,
+        allowances: doc.allowances,
+        deductions: doc.deductions,
+        status: doc.status,
+      },
+    });
 
     res.status(201).json({
       success: true,
       data: {
         id: result.insertedId.toString(),
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/payrolls/:id
+ * Chỉ cho phép sửa trực tiếp khi status hiện tại là DRAFT/PENDING
+ */
+router.put('/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId, userId } = req.user;
+    const { id } = req.params;
+    const {
+      period,
+      baseSalary,
+      allowances = [],
+      deductions = [],
+      status,
+      approvedAt,
+      reason,
+    } = req.body;
+
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+    const payrollObjectId = new ObjectId(id);
+
+    const payroll = await db.collection('payrolls').findOne({
+      _id: payrollObjectId,
+      tenantId: tenantObjectId,
+    });
+
+    if (!payroll) {
+      return res.status(404).json({ success: false, message: 'Payroll not found' });
+    }
+
+    if (!['DRAFT', 'PENDING'].includes(payroll.status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Only DRAFT/PENDING payroll can be edited directly',
+      });
+    }
+
+    const nextPeriod = {
+      month: parseInt(period?.month ?? payroll.period?.month, 10),
+      year: parseInt(period?.year ?? payroll.period?.year, 10),
+    };
+
+    const nextBase = baseSalary !== undefined ? normalizeMoney(baseSalary) : normalizeMoney(payroll.baseSalary);
+    const nextAllowances = Array.isArray(allowances) ? allowances : (payroll.allowances || []);
+    const nextDeductions = Array.isArray(deductions) ? deductions : (payroll.deductions || []);
+    const nextStatus = status || payroll.status;
+
+    const allowancesTotal = sumAmount(nextAllowances);
+    const deductionsTotal = sumAmount(nextDeductions);
+    const netSalary = nextBase + allowancesTotal - deductionsTotal;
+
+    const now = new Date();
+
+    await db.collection('payrolls').updateOne(
+      { _id: payrollObjectId, tenantId: tenantObjectId },
+      {
+        $set: {
+          period: nextPeriod,
+          baseSalary: nextBase,
+          allowances: nextAllowances,
+          deductions: nextDeductions,
+          allowancesTotal,
+          deductionsTotal,
+          netSalary,
+          status: nextStatus,
+          approvedAt: approvedAt ? new Date(approvedAt) : payroll.approvedAt || now,
+          updatedAt: now,
+          updatedBy: new ObjectId(userId),
+        },
+      }
+    );
+
+    await db.collection('payroll_audits').insertOne({
+      tenantId: tenantObjectId,
+      payrollId: payrollObjectId,
+      action: 'UPDATE',
+      performedBy: new ObjectId(userId),
+      performedAt: now,
+      reason: reason || null,
+      previousValues: {
+        period: payroll.period,
+        baseSalary: payroll.baseSalary,
+        allowances: payroll.allowances || [],
+        deductions: payroll.deductions || [],
+        status: payroll.status,
+      },
+      nextValues: {
+        period: nextPeriod,
+        baseSalary: nextBase,
+        allowances: nextAllowances,
+        deductions: nextDeductions,
+        status: nextStatus,
+      },
+    });
+
+    res.json({ success: true, message: 'Payroll updated successfully' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/payrolls/:id/revise
+ * Dùng cho phiếu APPROVED: tạo phiếu mới (revision), không sửa trực tiếp phiếu cũ
+ */
+router.post('/:id/revise', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId, userId } = req.user;
+    const { id } = req.params;
+    const {
+      period,
+      baseSalary,
+      allowances = [],
+      deductions = [],
+      status = 'PENDING',
+      approvedAt,
+      reason,
+    } = req.body;
+
+    if (!reason || String(reason).trim().length < 3) {
+      return res.status(400).json({
+        success: false,
+        message: 'Revision reason is required',
+      });
+    }
+
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+    const payrollObjectId = new ObjectId(id);
+
+    const payroll = await db.collection('payrolls').findOne({
+      _id: payrollObjectId,
+      tenantId: tenantObjectId,
+    });
+
+    if (!payroll) {
+      return res.status(404).json({ success: false, message: 'Payroll not found' });
+    }
+
+    if (payroll.status !== 'APPROVED') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only APPROVED payroll can be revised by this endpoint',
+      });
+    }
+
+    const nextPeriod = {
+      month: parseInt(period?.month ?? payroll.period?.month, 10),
+      year: parseInt(period?.year ?? payroll.period?.year, 10),
+    };
+
+    const nextBase = baseSalary !== undefined ? normalizeMoney(baseSalary) : normalizeMoney(payroll.baseSalary);
+    const nextAllowances = Array.isArray(allowances) ? allowances : (payroll.allowances || []);
+    const nextDeductions = Array.isArray(deductions) ? deductions : (payroll.deductions || []);
+
+    const allowancesTotal = sumAmount(nextAllowances);
+    const deductionsTotal = sumAmount(nextDeductions);
+    const netSalary = nextBase + allowancesTotal - deductionsTotal;
+
+    const now = new Date();
+
+    const newDoc = {
+      tenantId: tenantObjectId,
+      employeeId: payroll.employeeId,
+      period: nextPeriod,
+      baseSalary: nextBase,
+      allowances: nextAllowances,
+      deductions: nextDeductions,
+      allowancesTotal,
+      deductionsTotal,
+      netSalary,
+      status,
+      approvedAt: approvedAt ? new Date(approvedAt) : now,
+      createdAt: now,
+      createdBy: new ObjectId(userId),
+      revisionOf: payroll.revisionOf || payroll._id,
+      revisedFrom: payroll._id,
+      revisedAt: now,
+      revisedBy: new ObjectId(userId),
+      reviseReason: String(reason).trim(),
+      isSuperseded: false,
+      supersededBy: null,
+      updatedAt: now,
+      updatedBy: new ObjectId(userId),
+    };
+
+    const insertResult = await db.collection('payrolls').insertOne(newDoc);
+
+    await db.collection('payrolls').updateOne(
+      { _id: payroll._id, tenantId: tenantObjectId },
+      {
+        $set: {
+          isSuperseded: true,
+          supersededBy: insertResult.insertedId,
+          updatedAt: now,
+          updatedBy: new ObjectId(userId),
+        },
+      }
+    );
+
+    await db.collection('payroll_audits').insertOne({
+      tenantId: tenantObjectId,
+      payrollId: payroll._id,
+      action: 'REVISE_SOURCE',
+      performedBy: new ObjectId(userId),
+      performedAt: now,
+      reason: String(reason).trim(),
+      previousValues: {
+        period: payroll.period,
+        baseSalary: payroll.baseSalary,
+        allowances: payroll.allowances || [],
+        deductions: payroll.deductions || [],
+        status: payroll.status,
+      },
+      nextValues: {
+        supersededBy: insertResult.insertedId,
+      },
+    });
+
+    await db.collection('payroll_audits').insertOne({
+      tenantId: tenantObjectId,
+      payrollId: insertResult.insertedId,
+      action: 'REVISE_CREATE',
+      performedBy: new ObjectId(userId),
+      performedAt: now,
+      reason: String(reason).trim(),
+      previousValues: {
+        revisedFrom: payroll._id,
+      },
+      nextValues: {
+        period: nextPeriod,
+        baseSalary: nextBase,
+        allowances: nextAllowances,
+        deductions: nextDeductions,
+        status,
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: insertResult.insertedId.toString(),
+      },
+      message: 'Payroll revised successfully',
     });
   } catch (error) {
     next(error);

@@ -91,6 +91,10 @@ const translations: Translations = {
     vi: 'Lương',
     en: 'Payroll',
   },
+  'nav.leaveRequests': {
+    vi: 'Nghỉ phép',
+    en: 'Leave Requests',
+  },
   'nav.departments': {
     vi: 'Phòng ban',
     en: 'Departments',
@@ -410,6 +414,96 @@ const translations: Translations = {
   'payroll.preview': {
     vi: 'Thực nhận dự kiến',
     en: 'Estimated Net Salary',
+  },
+
+  // Leave Requests
+  'leaveRequests.title': {
+    vi: 'Yêu cầu nghỉ phép',
+    en: 'Leave Requests',
+  },
+  'leaveRequests.subtitle': {
+    vi: 'Duyệt và quản lý yêu cầu nghỉ phép của nhân viên',
+    en: 'Review and manage employee leave requests',
+  },
+  'leaveRequests.total': {
+    vi: 'Tổng',
+    en: 'Total',
+  },
+  'leaveRequests.pending': {
+    vi: 'Chờ duyệt',
+    en: 'Pending',
+  },
+  'leaveRequests.approved': {
+    vi: 'Đã duyệt',
+    en: 'Approved',
+  },
+  'leaveRequests.rejected': {
+    vi: 'Từ chối',
+    en: 'Rejected',
+  },
+  'leaveRequests.empty': {
+    vi: 'Chưa có yêu cầu nào',
+    en: 'No leave requests yet',
+  },
+  'leaveRequests.employee': {
+    vi: 'Nhân viên',
+    en: 'Employee',
+  },
+  'leaveRequests.type': {
+    vi: 'Loại nghỉ',
+    en: 'Leave Type',
+  },
+  'leaveRequests.dateRange': {
+    vi: 'Thời gian',
+    en: 'Date Range',
+  },
+  'leaveRequests.reason': {
+    vi: 'Lý do',
+    en: 'Reason',
+  },
+  'leaveRequests.submittedAt': {
+    vi: 'Ngày gửi',
+    en: 'Submitted',
+  },
+  'leaveRequests.status': {
+    vi: 'Trạng thái',
+    en: 'Status',
+  },
+  'leaveRequests.actions': {
+    vi: 'Thao tác',
+    en: 'Actions',
+  },
+  'leaveRequests.approve': {
+    vi: 'Duyệt',
+    en: 'Approve',
+  },
+  'leaveRequests.reject': {
+    vi: 'Từ chối',
+    en: 'Reject',
+  },
+  'leaveRequests.approveTitle': {
+    vi: 'Duyệt yêu cầu',
+    en: 'Approve Request',
+  },
+  'leaveRequests.rejectTitle': {
+    vi: 'Từ chối yêu cầu',
+    en: 'Reject Request',
+  },
+  'leaveRequests.reviewComment': {
+    vi: 'Ghi chú',
+    en: 'Comment',
+  },
+  'leaveRequests.reviewCommentPlaceholder': {
+    vi: 'Nhập ghi chú (tùy chọn)...',
+    en: 'Enter a comment (optional)...',
+  },
+  'leaveRequests.confirmApprove': {
+    vi: 'Xác nhận duyệt',
+    en: 'Confirm Approve',
+  },
+  'leaveRequests.confirmReject': {
+    vi: 'Xác nhận từ chối',
+    en: 'Confirm Reject',
   },
 
   // Attendance

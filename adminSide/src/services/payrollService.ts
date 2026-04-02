@@ -27,6 +27,10 @@ export interface Payroll {
   approvedAt: string | null
   createdAt: string
   createdBy: string
+  isSuperseded?: boolean
+  supersededBy?: string | null
+  revisedFrom?: string | null
+  reviseReason?: string | null
 }
 
 export interface EmployeeOption {
@@ -34,6 +38,7 @@ export interface EmployeeOption {
   name: string
   code: string
   position: string
+  email: string
 }
 
 export interface CreatePayrollRequest {
@@ -43,6 +48,59 @@ export interface CreatePayrollRequest {
   allowances?: PayrollItem[]
   deductions?: PayrollItem[]
   status?: 'DRAFT' | 'PENDING' | 'APPROVED'
+}
+
+export interface UpdatePayrollRequest {
+  period?: PayrollPeriod
+  baseSalary?: number
+  allowances?: PayrollItem[]
+  deductions?: PayrollItem[]
+  status?: 'DRAFT' | 'PENDING' | 'APPROVED'
+  reason?: string
+}
+
+export interface RevisePayrollRequest {
+  period?: PayrollPeriod
+  baseSalary?: number
+  allowances?: PayrollItem[]
+  deductions?: PayrollItem[]
+  status?: 'DRAFT' | 'PENDING' | 'APPROVED'
+  reason: string
+}
+
+export interface AutoCalcPayrollRequest {
+  employeeId: string
+  month: number
+  year: number
+  baseSalary?: number
+  overtimeMultiplier?: number
+  latePenaltyPerLate?: number
+  bhxhRate?: number
+  pitRate?: number
+}
+
+export interface AutoCalcPayrollResponse {
+  baseSalary: number
+  attendanceSummary: {
+    totalWorkMinutes: number
+    totalOvertimeMinutes: number
+    lateCount: number
+    attendanceDays: number
+    standardWorkingDays: number
+  }
+  suggestion: {
+    allowances: PayrollItem[]
+    deductions: PayrollItem[]
+    allowancesTotal: number
+    deductionsTotal: number
+    netSalary: number
+    components: {
+      overtimePay: number
+      latePenalty: number
+      bhxh: number
+      pit: number
+    }
+  }
 }
 
 export async function getAllPayrolls(params?: {
@@ -84,4 +142,27 @@ export async function createPayroll(data: CreatePayrollRequest): Promise<string>
     return response.data.id
   }
   throw new Error(response.message || 'Failed to create payroll')
+}
+
+export async function updatePayroll(id: string, data: UpdatePayrollRequest): Promise<void> {
+  const response = await api.put<null>(`/payrolls/${id}`, data)
+  if (!response.success) {
+    throw new Error(response.message || 'Failed to update payroll')
+  }
+}
+
+export async function revisePayroll(id: string, data: RevisePayrollRequest): Promise<string> {
+  const response = await api.post<{ id: string }>(`/payrolls/${id}/revise`, data)
+  if (response.success && response.data) {
+    return response.data.id
+  }
+  throw new Error(response.message || 'Failed to revise payroll')
+}
+
+export async function autoCalculatePayroll(data: AutoCalcPayrollRequest): Promise<AutoCalcPayrollResponse> {
+  const response = await api.post<AutoCalcPayrollResponse>('/payrolls/auto-calculate', data)
+  if (response.success && response.data) {
+    return response.data
+  }
+  throw new Error(response.message || 'Failed to auto calculate payroll')
 }

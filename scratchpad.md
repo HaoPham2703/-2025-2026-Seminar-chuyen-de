@@ -553,6 +553,55 @@
   - Áp dụng privacy settings vào Profile component
   - Ẩn/hiện email và phone dựa trên `privacy.showEmail` và `privacy.showPhone`
 
+### Lesson 31: Payroll Edit/Revise với audit log (Admin)
+- **Mục tiêu**:
+  - Không cho sửa trực tiếp phiếu `APPROVED`.
+  - Chỉ cho sửa trực tiếp khi phiếu đang `DRAFT/PENDING`.
+  - Với phiếu `APPROVED`, dùng luồng **Revise** tạo phiên bản mới + lưu audit log.
+
+- **Backend (`Backend/routes/payrolls.js`)**:
+  1. **Mở rộng dữ liệu payroll** khi tạo mới (`POST /api/payrolls`):
+     - Thêm metadata revision: `revisionOf`, `revisedFrom`, `revisedAt`, `revisedBy`, `reviseReason`, `isSuperseded`, `supersededBy`, `updatedAt`, `updatedBy`.
+     - Ghi audit `CREATE` vào collection `payroll_audits`.
+  2. **Thêm API update trực tiếp** `PUT /api/payrolls/:id`:
+     - Chỉ cho phép nếu trạng thái hiện tại của phiếu là `DRAFT` hoặc `PENDING`.
+     - Nếu là `APPROVED` trả lỗi: `Only DRAFT/PENDING payroll can be edited directly`.
+     - Tự tính lại `allowancesTotal`, `deductionsTotal`, `netSalary`.
+     - Ghi audit `UPDATE` với `previousValues` và `nextValues`.
+  3. **Thêm API revise** `POST /api/payrolls/:id/revise`:
+     - Chỉ cho phép với phiếu nguồn `APPROVED`.
+     - Bắt buộc `reason` (lý do điều chỉnh).
+     - Tạo phiếu mới (revision) thay vì sửa phiếu cũ.
+     - Đánh dấu phiếu cũ `isSuperseded = true`, `supersededBy = <newPayrollId>`.
+     - Ghi 2 audit records:
+       - `REVISE_SOURCE` (phiếu cũ bị thay thế)
+       - `REVISE_CREATE` (phiếu revision mới)
+
+- **Admin service (`adminSide/src/services/payrollService.ts`)**:
+  - Thêm types:
+    - `UpdatePayrollRequest`
+    - `RevisePayrollRequest`
+  - Thêm API methods:
+    - `updatePayroll(id, data)` → gọi `PUT /payrolls/:id`
+    - `revisePayroll(id, data)` → gọi `POST /payrolls/:id/revise`
+  - Mở rộng `Payroll` type với fields revision/superseded.
+
+- **Admin UI (`adminSide/src/pages/Payroll.tsx`)**:
+  - Bổ sung mode modal: `create | edit | revise`.
+  - Thêm cột **Hành động** trong bảng payroll:
+    - Phiếu `DRAFT/PENDING`: nút **Sửa**.
+    - Phiếu `APPROVED` (chưa superseded): nút **Điều chỉnh**.
+    - Phiếu đã superseded: hiển thị “Đã được điều chỉnh”.
+  - Luồng submit theo mode:
+    - `create` → `createPayroll`
+    - `edit` → `updatePayroll`
+    - `revise` → `revisePayroll` (bắt buộc nhập lý do)
+  - Modal prefill dữ liệu từ phiếu được chọn, có preview thực nhận.
+
+- **Business rule đã enforce**:
+  - `APPROVED` không chỉnh trực tiếp.
+  - Muốn đổi `APPROVED` phải revise, có lý do và audit trail.
+
 # Scratchpad
 
 ## Nhiệm vụ hiện tại: Admin Dashboard (adminSide)

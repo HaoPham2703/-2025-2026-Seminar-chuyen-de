@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useLanguage } from '../contexts/LanguageContext'
 import {
   getAllPayrolls,
   getEmployeeOptions,
   createPayroll,
+  updatePayroll,
+  revisePayroll,
+  autoCalculatePayroll,
   type Payroll,
   type EmployeeOption,
 } from '../services/payrollService'
@@ -32,13 +35,18 @@ const STATUS_COLORS: Record<string, string> = {
   DRAFT: 'bg-gray-100 text-gray-600',
 }
 
+type ModalMode = 'create' | 'edit' | 'revise'
+
 export default function Payroll() {
   const { language } = useLanguage()
   const [payrolls, setPayrolls] = useState<Payroll[]>([])
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
   const [showModal, setShowModal] = useState(false)
+  const [modalMode, setModalMode] = useState<ModalMode>('create')
+  const [selectedPayroll, setSelectedPayroll] = useState<Payroll | null>(null)
 
   // Filter state
   const [filterMonth, setFilterMonth] = useState<number>(new Date().getMonth() + 1)
@@ -54,6 +62,20 @@ export default function Payroll() {
   const [formAllowances, setFormAllowances] = useState([{ name: '', amount: '' }])
   const [formDeductions, setFormDeductions] = useState([{ name: '', amount: '' }])
   const [formStatus, setFormStatus] = useState<'DRAFT' | 'PENDING' | 'APPROVED'>('APPROVED')
+  const [formReason, setFormReason] = useState('')
+  const [autoCalcSummary, setAutoCalcSummary] = useState<{
+    totalWorkMinutes: number
+    totalOvertimeMinutes: number
+    lateCount: number
+    attendanceDays: number
+    standardWorkingDays: number
+    overtimePay: number
+    latePenalty: number
+    bhxh: number
+    pit: number
+    netSalary: number
+  } | null>(null)
+  const [autoCalculating, setAutoCalculating] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
   const months = language === 'vi' ? MONTHS_VI : MONTHS_EN
@@ -66,6 +88,18 @@ export default function Payroll() {
   useEffect(() => {
     loadEmployees()
   }, [])
+
+  const modalTitle = useMemo(() => {
+    if (modalMode === 'edit') return 'Sửa phiếu lương'
+    if (modalMode === 'revise') return 'Điều chỉnh phiếu đã duyệt'
+    return t('payroll.createTitle') || 'Tạo phiếu lương mới'
+  }, [modalMode])
+
+  const modalSubtitle = useMemo(() => {
+    if (modalMode === 'edit') return 'Chỉ áp dụng cho phiếu DRAFT/PENDING'
+    if (modalMode === 'revise') return 'Tạo phiên bản mới và lưu audit log'
+    return t('payroll.createSubtitle') || 'Điền thông tin bên dưới'
+  }, [modalMode])
 
   const loadData = async () => {
     try {
@@ -91,6 +125,122 @@ export default function Payroll() {
       setEmployees(data)
     } catch {
       // silent fail
+    }
+  }
+
+  const resetForm = () => {
+    setFormEmployee('')
+    setFormMonth(new Date().getMonth() + 1)
+    setFormYear(new Date().getFullYear())
+    setFormBaseSalary('')
+    setFormAllowances([{ name: '', amount: '' }])
+    setFormDeductions([{ name: '', amount: '' }])
+    setFormStatus('APPROVED')
+    setFormReason('')
+    setAutoCalcSummary(null)
+    setSelectedPayroll(null)
+    setModalMode('create')
+  }
+
+  const openCreateModal = () => {
+    resetForm()
+    setModalMode('create')
+    setShowModal(true)
+  }
+
+  const openEditModal = (payroll: Payroll) => {
+    if (!['DRAFT', 'PENDING'].includes(payroll.status)) {
+      alert('Chỉ được sửa trực tiếp phiếu DRAFT/PENDING')
+      return
+    }
+
+    setSelectedPayroll(payroll)
+    setModalMode('edit')
+    setFormEmployee(payroll.employeeId)
+    setFormMonth(payroll.period.month)
+    setFormYear(payroll.period.year)
+    setFormBaseSalary(String(payroll.baseSalary || 0))
+    setFormAllowances(
+      payroll.allowances?.length
+        ? payroll.allowances.map((a) => ({ name: a.name || '', amount: String(a.amount ?? '') }))
+        : [{ name: '', amount: '' }]
+    )
+    setFormDeductions(
+      payroll.deductions?.length
+        ? payroll.deductions.map((d) => ({ name: d.name || '', amount: String(d.amount ?? '') }))
+        : [{ name: '', amount: '' }]
+    )
+    setFormStatus(payroll.status)
+    setFormReason('')
+    setShowModal(true)
+  }
+
+  const openReviseModal = (payroll: Payroll) => {
+    if (payroll.status !== 'APPROVED') {
+      alert('Luồng revise chỉ áp dụng cho phiếu APPROVED')
+      return
+    }
+
+    setSelectedPayroll(payroll)
+    setModalMode('revise')
+    setFormEmployee(payroll.employeeId)
+    setFormMonth(payroll.period.month)
+    setFormYear(payroll.period.year)
+    setFormBaseSalary(String(payroll.baseSalary || 0))
+    setFormAllowances(
+      payroll.allowances?.length
+        ? payroll.allowances.map((a) => ({ name: a.name || '', amount: String(a.amount ?? '') }))
+        : [{ name: '', amount: '' }]
+    )
+    setFormDeductions(
+      payroll.deductions?.length
+        ? payroll.deductions.map((d) => ({ name: d.name || '', amount: String(d.amount ?? '') }))
+        : [{ name: '', amount: '' }]
+    )
+    setFormStatus('PENDING')
+    setFormReason('')
+    setShowModal(true)
+  }
+
+  const handleAutoCalculate = async () => {
+    if (!formEmployee || !formMonth || !formYear) {
+      alert('Vui lòng chọn nhân viên và kỳ lương trước khi tính tự động')
+      return
+    }
+
+    try {
+      setAutoCalculating(true)
+      const data = await autoCalculatePayroll({
+        employeeId: formEmployee,
+        month: formMonth,
+        year: formYear,
+        baseSalary: formBaseSalary ? parseFloat(formBaseSalary) : undefined,
+      })
+
+      setFormBaseSalary(String(data.baseSalary || 0))
+      setFormAllowances(
+        data.suggestion.allowances.length
+          ? data.suggestion.allowances.map((a) => ({ name: a.name, amount: String(a.amount) }))
+          : [{ name: '', amount: '' }]
+      )
+      setFormDeductions(
+        data.suggestion.deductions.length
+          ? data.suggestion.deductions.map((d) => ({ name: d.name, amount: String(d.amount) }))
+          : [{ name: '', amount: '' }]
+      )
+
+      setAutoCalcSummary({
+        ...data.attendanceSummary,
+        overtimePay: data.suggestion.components.overtimePay,
+        latePenalty: data.suggestion.components.latePenalty,
+        bhxh: data.suggestion.components.bhxh,
+        pit: data.suggestion.components.pit,
+        netSalary: data.suggestion.netSalary,
+      })
+    } catch (err: any) {
+      alert(err.message || 'Không thể tính tự động payroll')
+    } finally {
+      setAutoCalculating(false)
     }
   }
 
@@ -124,7 +274,12 @@ export default function Payroll() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
     if (!formEmployee || !formBaseSalary) return
+    if (modalMode === 'revise' && !formReason.trim()) {
+      alert('Vui lòng nhập lý do điều chỉnh để lưu audit log')
+      return
+    }
 
     try {
       setSubmitting(true)
@@ -135,26 +290,42 @@ export default function Payroll() {
         .filter((d) => d.name && d.amount)
         .map((d) => ({ name: d.name, amount: parseFloat(d.amount) }))
 
-      await createPayroll({
-        employeeId: formEmployee,
-        period: { month: formMonth, year: formYear },
-        baseSalary: parseFloat(formBaseSalary),
-        allowances,
-        deductions,
-        status: formStatus,
-      })
+      if (modalMode === 'create') {
+        await createPayroll({
+          employeeId: formEmployee,
+          period: { month: formMonth, year: formYear },
+          baseSalary: parseFloat(formBaseSalary),
+          allowances,
+          deductions,
+          status: formStatus,
+        })
+      } else if (modalMode === 'edit') {
+        if (!selectedPayroll) throw new Error('No payroll selected')
+        await updatePayroll(selectedPayroll._id, {
+          period: { month: formMonth, year: formYear },
+          baseSalary: parseFloat(formBaseSalary),
+          allowances,
+          deductions,
+          status: formStatus,
+          reason: formReason || undefined,
+        })
+      } else {
+        if (!selectedPayroll) throw new Error('No payroll selected')
+        await revisePayroll(selectedPayroll._id, {
+          period: { month: formMonth, year: formYear },
+          baseSalary: parseFloat(formBaseSalary),
+          allowances,
+          deductions,
+          status: formStatus,
+          reason: formReason.trim(),
+        })
+      }
 
-      // Reset form
       setShowModal(false)
-      setFormEmployee('')
-      setFormBaseSalary('')
-      setFormAllowances([{ name: '', amount: '' }])
-      setFormDeductions([{ name: '', amount: '' }])
-
-      // Reload
+      resetForm()
       loadData()
     } catch (err: any) {
-      alert(err.message || 'Failed to create payroll')
+      alert(err.message || 'Không thể lưu phiếu lương')
     } finally {
       setSubmitting(false)
     }
@@ -173,7 +344,6 @@ export default function Payroll() {
 
   return (
     <div className="p-6">
-      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
@@ -184,17 +354,15 @@ export default function Payroll() {
           </p>
         </div>
         <button
-          onClick={() => setShowModal(true)}
+          onClick={openCreateModal}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors cursor-pointer"
         >
           + {t('payroll.addNew') || 'Tạo phiếu lương'}
         </button>
       </div>
 
-      {/* Filters */}
       <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6">
         <div className="flex flex-wrap gap-3">
-          {/* Month */}
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-600">{t('payroll.month') || 'Tháng'}:</label>
             <select
@@ -208,7 +376,6 @@ export default function Payroll() {
             </select>
           </div>
 
-          {/* Year */}
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-600">{t('payroll.year') || 'Năm'}:</label>
             <select
@@ -222,7 +389,6 @@ export default function Payroll() {
             </select>
           </div>
 
-          {/* Employee */}
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-600">{t('payroll.employee') || 'Nhân viên'}:</label>
             <select
@@ -232,12 +398,11 @@ export default function Payroll() {
             >
               <option value="">-- {t('common.all') || 'Tất cả'} --</option>
               {employees.map((emp) => (
-                <option key={emp.id} value={emp.id}>{emp.name} ({emp.code})</option>
+                <option key={emp.id} value={emp.id}>{emp.name} — {emp.email} — {emp.code}</option>
               ))}
             </select>
           </div>
 
-          {/* Status */}
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-600">{t('payroll.status') || 'Trạng thái'}:</label>
             <select
@@ -254,14 +419,12 @@ export default function Payroll() {
         </div>
       </div>
 
-      {/* Error */}
       {error && (
         <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg mb-4 text-sm">
           {error}
         </div>
       )}
 
-      {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {loading ? (
           <div className="p-12 text-center text-gray-500">
@@ -275,57 +438,55 @@ export default function Payroll() {
           <table className="w-full">
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                  {t('payroll.period') || 'Kỳ lương'}
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                  {t('payroll.employee') || 'Nhân viên'}
-                </th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                  {t('payroll.baseSalary') || 'Lương cơ bản'}
-                </th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                  {t('payroll.allowances') || 'Phụ cấp'}
-                </th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                  {t('payroll.deductions') || 'Khấu trừ'}
-                </th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                  {t('payroll.netSalary') || 'Thực nhận'}
-                </th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                  {t('payroll.status') || 'Trạng thái'}
-                </th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{t('payroll.period') || 'Kỳ lương'}</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{t('payroll.employee') || 'Nhân viên'}</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{t('payroll.baseSalary') || 'Lương cơ bản'}</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{t('payroll.allowances') || 'Phụ cấp'}</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{t('payroll.deductions') || 'Khấu trừ'}</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{t('payroll.netSalary') || 'Thực nhận'}</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{t('payroll.status') || 'Trạng thái'}</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Hành động</th>
               </tr>
             </thead>
             <tbody>
               {payrolls.map((p) => (
                 <tr key={p._id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3">
-                    <span className="font-medium text-gray-900">
-                      {months[p.period.month - 1]}/{p.period.year}
-                    </span>
+                    <span className="font-medium text-gray-900">{months[p.period.month - 1]}/{p.period.year}</span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="font-medium text-gray-900">{p.employeeName}</div>
                     <div className="text-xs text-gray-400">{p.employeeCode}</div>
                   </td>
-                  <td className="px-4 py-3 text-right font-medium text-gray-700">
-                    {formatCurrency(p.baseSalary, language)}
-                  </td>
-                  <td className="px-4 py-3 text-right text-green-600 font-medium">
-                    +{formatCurrency(p.allowancesTotal, language)}
-                  </td>
-                  <td className="px-4 py-3 text-right text-red-500 font-medium">
-                    -{formatCurrency(p.deductionsTotal, language)}
-                  </td>
-                  <td className="px-4 py-3 text-right font-bold text-gray-900">
-                    {formatCurrency(p.netSalary, language)}
-                  </td>
+                  <td className="px-4 py-3 text-right font-medium text-gray-700">{formatCurrency(p.baseSalary, language)}</td>
+                  <td className="px-4 py-3 text-right text-green-600 font-medium">+{formatCurrency(p.allowancesTotal, language)}</td>
+                  <td className="px-4 py-3 text-right text-red-500 font-medium">-{formatCurrency(p.deductionsTotal, language)}</td>
+                  <td className="px-4 py-3 text-right font-bold text-gray-900">{formatCurrency(p.netSalary, language)}</td>
                   <td className="px-4 py-3 text-center">
-                    <span className={`text-xs font-semibold px-2 py-1 rounded-full ${STATUS_COLORS[p.status] || ''}`}>
-                      {p.status}
-                    </span>
+                    <span className={`text-xs font-semibold px-2 py-1 rounded-full ${STATUS_COLORS[p.status] || ''}`}>{p.status}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-center gap-2">
+                      {(p.status === 'DRAFT' || p.status === 'PENDING') && (
+                        <button
+                          onClick={() => openEditModal(p)}
+                          className="px-2 py-1 text-xs rounded-md border border-blue-300 text-blue-700 hover:bg-blue-50"
+                        >
+                          Sửa
+                        </button>
+                      )}
+                      {p.status === 'APPROVED' && !p.isSuperseded && (
+                        <button
+                          onClick={() => openReviseModal(p)}
+                          className="px-2 py-1 text-xs rounded-md border border-orange-300 text-orange-700 hover:bg-orange-50"
+                        >
+                          Điều chỉnh
+                        </button>
+                      )}
+                      {p.isSuperseded && (
+                        <span className="text-[11px] text-gray-400">Đã được điều chỉnh</span>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -334,21 +495,25 @@ export default function Payroll() {
         )}
       </div>
 
-      {/* Create Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-gray-200">
-              <h2 className="text-xl font-bold text-gray-900">
-                {t('payroll.createTitle') || 'Tạo phiếu lương mới'}
-              </h2>
-              <p className="text-sm text-gray-500 mt-1">
-                {t('payroll.createSubtitle') || 'Điền thông tin bên dưới'}
-              </p>
+              <h2 className="text-xl font-bold text-gray-900">{modalTitle}</h2>
+              <p className="text-sm text-gray-500 mt-1">{modalSubtitle}</p>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-5">
-              {/* Employee */}
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleAutoCalculate}
+                  disabled={autoCalculating}
+                  className="px-3 py-2 text-sm rounded-lg border border-indigo-300 text-indigo-700 hover:bg-indigo-50 disabled:opacity-60"
+                >
+                  {autoCalculating ? 'Đang tính...' : 'Tính tự động'}
+                </button>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   {t('payroll.employee') || 'Nhân viên'} *
@@ -357,23 +522,21 @@ export default function Payroll() {
                   value={formEmployee}
                   onChange={(e) => setFormEmployee(e.target.value)}
                   required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={modalMode !== 'create'}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">-- {t('common.select') || 'Chọn'} --</option>
                   {employees.map((emp) => (
                     <option key={emp.id} value={emp.id}>
-                      {emp.name} — {emp.code}
+                      {emp.name} — {emp.email} — {emp.code}
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Period */}
               <div className="flex gap-3">
                 <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('payroll.month') || 'Tháng'} *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('payroll.month') || 'Tháng'} *</label>
                   <select
                     value={formMonth}
                     onChange={(e) => setFormMonth(Number(e.target.value))}
@@ -385,9 +548,7 @@ export default function Payroll() {
                   </select>
                 </div>
                 <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {t('payroll.year') || 'Năm'} *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('payroll.year') || 'Năm'} *</label>
                   <select
                     value={formYear}
                     onChange={(e) => setFormYear(Number(e.target.value))}
@@ -400,7 +561,6 @@ export default function Payroll() {
                 </div>
               </div>
 
-              {/* Base Salary */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   {t('payroll.baseSalary') || 'Lương cơ bản'} (VND) *
@@ -416,19 +576,10 @@ export default function Payroll() {
                 />
               </div>
 
-              {/* Allowances */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-gray-700">
-                    {t('payroll.allowances') || 'Phụ cấp'}
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleAddAllowance}
-                    className="text-xs text-blue-600 hover:text-blue-800 cursor-pointer"
-                  >
-                    + {t('common.add') || 'Thêm'}
-                  </button>
+                  <label className="text-sm font-medium text-gray-700">{t('payroll.allowances') || 'Phụ cấp'}</label>
+                  <button type="button" onClick={handleAddAllowance} className="text-xs text-blue-600 hover:text-blue-800 cursor-pointer">+ {t('common.add') || 'Thêm'}</button>
                 </div>
                 {formAllowances.map((a, i) => (
                   <div key={i} className="flex gap-2 mb-2">
@@ -448,31 +599,16 @@ export default function Payroll() {
                       className="w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     {formAllowances.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveAllowance(i)}
-                        className="text-red-500 text-sm px-2 cursor-pointer"
-                      >
-                        ✕
-                      </button>
+                      <button type="button" onClick={() => handleRemoveAllowance(i)} className="text-red-500 text-sm px-2 cursor-pointer">✕</button>
                     )}
                   </div>
                 ))}
               </div>
 
-              {/* Deductions */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-gray-700">
-                    {t('payroll.deductions') || 'Khấu trừ'}
-                  </label>
-                  <button
-                    type="button"
-                    onClick={handleAddDeduction}
-                    className="text-xs text-blue-600 hover:text-blue-800 cursor-pointer"
-                  >
-                    + {t('common.add') || 'Thêm'}
-                  </button>
+                  <label className="text-sm font-medium text-gray-700">{t('payroll.deductions') || 'Khấu trừ'}</label>
+                  <button type="button" onClick={handleAddDeduction} className="text-xs text-blue-600 hover:text-blue-800 cursor-pointer">+ {t('common.add') || 'Thêm'}</button>
                 </div>
                 {formDeductions.map((d, i) => (
                   <div key={i} className="flex gap-2 mb-2">
@@ -492,26 +628,17 @@ export default function Payroll() {
                       className="w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     {formDeductions.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveDeduction(i)}
-                        className="text-red-500 text-sm px-2 cursor-pointer"
-                      >
-                        ✕
-                      </button>
+                      <button type="button" onClick={() => handleRemoveDeduction(i)} className="text-red-500 text-sm px-2 cursor-pointer">✕</button>
                     )}
                   </div>
                 ))}
               </div>
 
-              {/* Status */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t('payroll.status') || 'Trạng thái'}
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('payroll.status') || 'Trạng thái'}</label>
                 <select
                   value={formStatus}
-                  onChange={(e) => setFormStatus(e.target.value as any)}
+                  onChange={(e) => setFormStatus(e.target.value as 'DRAFT' | 'PENDING' | 'APPROVED')}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="APPROVED">{t('payroll.approved') || 'Đã duyệt'}</option>
@@ -520,21 +647,46 @@ export default function Payroll() {
                 </select>
               </div>
 
-              {/* Preview */}
+              {(modalMode === 'revise' || modalMode === 'edit') && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {modalMode === 'revise' ? 'Lý do điều chỉnh *' : 'Ghi chú chỉnh sửa (audit)'}
+                  </label>
+                  <textarea
+                    value={formReason}
+                    onChange={(e) => setFormReason(e.target.value)}
+                    placeholder={modalMode === 'revise' ? 'Ví dụ: Điều chỉnh sai phụ cấp ca đêm tháng 3' : 'Nhập ghi chú nếu cần'}
+                    rows={3}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
+
+              {autoCalcSummary && (
+                <div className="bg-indigo-50 rounded-lg p-4 text-sm text-indigo-900 space-y-1">
+                  <p><strong>Ngày công:</strong> {autoCalcSummary.attendanceDays}/{autoCalcSummary.standardWorkingDays}</p>
+                  <p><strong>Giờ làm:</strong> {(autoCalcSummary.totalWorkMinutes / 60).toFixed(1)}h</p>
+                  <p><strong>Tăng ca:</strong> {(autoCalcSummary.totalOvertimeMinutes / 60).toFixed(1)}h</p>
+                  <p><strong>Đi muộn:</strong> {autoCalcSummary.lateCount} lần</p>
+                  <p><strong>OT pay:</strong> {formatCurrency(autoCalcSummary.overtimePay, language)}</p>
+                  <p><strong>Phạt đi muộn:</strong> -{formatCurrency(autoCalcSummary.latePenalty, language)}</p>
+                  <p><strong>BHXH:</strong> -{formatCurrency(autoCalcSummary.bhxh, language)}</p>
+                  <p><strong>Thuế TNCN:</strong> -{formatCurrency(autoCalcSummary.pit, language)}</p>
+                </div>
+              )}
+
               <div className="bg-blue-50 rounded-lg p-4">
-                <p className="text-sm text-gray-600">
-                  {t('payroll.preview') || 'Thực nhận dự kiến'}:
-                </p>
-                <p className="text-2xl font-bold text-blue-700 mt-1">
-                  {formatCurrency(previewNet(), language)}
-                </p>
+                <p className="text-sm text-gray-600">{t('payroll.preview') || 'Thực nhận dự kiến'}:</p>
+                <p className="text-2xl font-bold text-blue-700 mt-1">{formatCurrency(previewNet(), language)}</p>
               </div>
 
-              {/* Actions */}
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={() => {
+                    setShowModal(false)
+                    resetForm()
+                  }}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors cursor-pointer"
                 >
                   {t('common.cancel') || 'Hủy'}
@@ -546,7 +698,11 @@ export default function Payroll() {
                 >
                   {submitting
                     ? (t('common.saving') || 'Đang lưu...')
-                    : (t('common.save') || 'Lưu')}
+                    : modalMode === 'create'
+                      ? (t('common.save') || 'Lưu')
+                      : modalMode === 'edit'
+                        ? 'Cập nhật'
+                        : 'Tạo bản điều chỉnh'}
                 </button>
               </div>
             </form>

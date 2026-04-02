@@ -69,6 +69,14 @@ export interface LeaveRequest {
   reviewedAt?: string
 }
 
+export interface PayrollFormulaSettings {
+  overtimeMultiplier: number
+  latePenaltyPerLate: number
+  bhxhRate: number
+  pitRate: number
+  standardWorkingDays: number
+}
+
 export const adminService = {
   async getDashboardData(): Promise<DashboardData> {
     const response = await api.get<DashboardData>('/admin/dashboard')
@@ -111,6 +119,10 @@ export const adminService = {
     return response.data!
   },
 
+  async updateLeaveRequest(id: string, status: 'APPROVED' | 'REJECTED', reviewComment?: string): Promise<void> {
+    await api.patch(`/admin/leave-requests/${id}`, { status, reviewComment })
+  },
+
   async updateAttendanceSettings(payload: {
     workStartTime?: string
     workEndTime?: string
@@ -120,5 +132,21 @@ export const adminService = {
     reason?: string
   }): Promise<void> {
     await api.put('/admin/attendance-settings', payload)
+  },
+
+  async getPayrollFormulaSettings(): Promise<PayrollFormulaSettings> {
+    const response = await api.get<PayrollFormulaSettings>('/admin/payroll-formula-settings')
+    return response.data!
+  },
+
+  async updatePayrollFormulaSettings(payload: {
+    overtimeMultiplier?: number
+    latePenaltyPerLate?: number
+    bhxhRate?: number
+    pitRate?: number
+    standardWorkingDays?: number
+    reason?: string
+  }): Promise<void> {
+    await api.put('/admin/payroll-formula-settings', payload)
   },
 }

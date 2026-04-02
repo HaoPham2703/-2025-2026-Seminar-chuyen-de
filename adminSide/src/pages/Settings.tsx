@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { Clock, Eye, EyeOff, Lock, Mail, Phone, Save, User } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
-import { t } from '../utils/i18n'
-import { User, Mail, Phone, Lock, Save, Eye, EyeOff, Clock } from 'lucide-react'
 import { adminService } from '../services/adminService'
+import { t } from '../utils/i18n'
 
 interface ProfileData {
   firstName: string
@@ -62,6 +62,17 @@ export default function Settings() {
   })
   const [isLoadingCompanySettings, setIsLoadingCompanySettings] = useState(false)
 
+  // Payroll formula settings
+  const [payrollFormulaSettings, setPayrollFormulaSettings] = useState({
+    overtimeMultiplier: 1.5,
+    latePenaltyPerLate: 50000,
+    bhxhRate: 0.08,
+    pitRate: 0,
+    standardWorkingDays: 22,
+  })
+  const [payrollReason, setPayrollReason] = useState('')
+  const [isLoadingPayrollFormula, setIsLoadingPayrollFormula] = useState(false)
+
   useEffect(() => {
     if (user) {
       setProfileData({
@@ -107,10 +118,33 @@ export default function Settings() {
       }
     }
 
+    const loadPayrollFormulaSettings = async () => {
+      try {
+        setIsLoadingPayrollFormula(true)
+        const data = await adminService.getPayrollFormulaSettings()
+        setPayrollFormulaSettings({
+          overtimeMultiplier: data.overtimeMultiplier,
+          latePenaltyPerLate: data.latePenaltyPerLate,
+          bhxhRate: data.bhxhRate,
+          pitRate: data.pitRate,
+          standardWorkingDays: data.standardWorkingDays,
+        })
+      } catch (error: any) {
+        console.error('Failed to load payroll formula settings:', error)
+        setMessage({
+          type: 'error',
+          text: error.message || 'Failed to load payroll formula settings',
+        })
+      } finally {
+        setIsLoadingPayrollFormula(false)
+      }
+    }
+
     loadCompanySettings()
+    loadPayrollFormulaSettings()
   }, [])
 
-  const handleProfileUpdate = async (e: React.FormEvent) => {
+  const handleProfileUpdate = async (e: any) => {
     e.preventDefault()
     setIsLoading(true)
     setMessage(null)
@@ -129,7 +163,7 @@ export default function Settings() {
     }
   }
 
-  const handlePasswordChange = async (e: React.FormEvent) => {
+  const handlePasswordChange = async (e: any) => {
     e.preventDefault()
     setIsLoading(true)
     setMessage(null)
@@ -182,7 +216,7 @@ export default function Settings() {
     }
   }
 
-  const handleCompanySettingsUpdate = async (e: React.FormEvent) => {
+  const handleCompanySettingsUpdate = async (e: any) => {
     e.preventDefault()
     setIsLoadingCompanySettings(true)
     setMessage(null)
@@ -209,6 +243,36 @@ export default function Settings() {
       })
     } finally {
       setIsLoadingCompanySettings(false)
+    }
+  }
+
+  const handlePayrollFormulaUpdate = async (e: any) => {
+    e.preventDefault()
+    setIsLoadingPayrollFormula(true)
+    setMessage(null)
+
+    try {
+      await adminService.updatePayrollFormulaSettings({
+        overtimeMultiplier: payrollFormulaSettings.overtimeMultiplier,
+        latePenaltyPerLate: payrollFormulaSettings.latePenaltyPerLate,
+        bhxhRate: payrollFormulaSettings.bhxhRate,
+        pitRate: payrollFormulaSettings.pitRate,
+        standardWorkingDays: payrollFormulaSettings.standardWorkingDays,
+        reason: payrollReason || undefined,
+      })
+
+      setMessage({
+        type: 'success',
+        text: 'Payroll formula settings updated successfully!',
+      })
+      setPayrollReason('')
+    } catch (error: any) {
+      setMessage({
+        type: 'error',
+        text: error.message || 'Failed to update payroll formula settings',
+      })
+    } finally {
+      setIsLoadingPayrollFormula(false)
     }
   }
 
@@ -526,118 +590,243 @@ export default function Settings() {
 
       {/* Company Working Hours Tab */}
       {activeTab === 'company' && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <form onSubmit={handleCompanySettingsUpdate} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Work Start Time */}
+        <div className="space-y-6">
+          <div className="bg-white rounded-lg shadow p-6">
+            <form onSubmit={handleCompanySettingsUpdate} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Work Start Time */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Clock size={16} className="inline mr-2" />
+                    {t('settings.workStartTime') || 'Work Start Time'}
+                  </label>
+                  <input
+                    type="time"
+                    value={companySettings.workStartTime}
+                    onChange={(e) =>
+                      setCompanySettings({ ...companySettings, workStartTime: e.target.value })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    required
+                  />
+                </div>
+
+                {/* Work End Time */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <Clock size={16} className="inline mr-2" />
+                    {t('settings.workEndTime') || 'Work End Time'}
+                  </label>
+                  <input
+                    type="time"
+                    value={companySettings.workEndTime}
+                    onChange={(e) =>
+                      setCompanySettings({ ...companySettings, workEndTime: e.target.value })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    required
+                  />
+                </div>
+
+                {/* Break Duration */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {t('settings.breakDuration') || 'Break Duration (minutes)'}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={companySettings.breakDuration}
+                    onChange={(e) =>
+                      setCompanySettings({
+                        ...companySettings,
+                        breakDuration: Number(e.target.value),
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    required
+                  />
+                </div>
+
+                {/* Late Threshold */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {t('settings.lateThreshold') || 'Late Threshold (minutes)'}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={companySettings.lateThreshold}
+                    onChange={(e) =>
+                      setCompanySettings({
+                        ...companySettings,
+                        lateThreshold: Number(e.target.value),
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    required
+                  />
+                </div>
+
+                {/* Overtime Threshold */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {t('settings.overtimeThreshold') || 'Overtime Threshold (hours)'}
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={companySettings.overtimeThreshold}
+                    onChange={(e) =>
+                      setCompanySettings({
+                        ...companySettings,
+                        overtimeThreshold: Number(e.target.value),
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={isLoadingCompanySettings}
+                  className="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-2"
+                >
+                  <Save size={16} />
+                  {isLoadingCompanySettings
+                    ? t('common.loading')
+                    : t('settings.saveCompanySettings') || 'Save Company Settings'}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">Payroll Formula Settings</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              Cấu hình mặc định cho nút “Tính tự động” ở Payroll.
+            </p>
+
+            <form onSubmit={handlePayrollFormulaUpdate} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">OT Multiplier (x)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    step={0.1}
+                    value={payrollFormulaSettings.overtimeMultiplier}
+                    onChange={(e) =>
+                      setPayrollFormulaSettings({
+                        ...payrollFormulaSettings,
+                        overtimeMultiplier: Number(e.target.value),
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Phạt đi muộn / lần (VND)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={payrollFormulaSettings.latePenaltyPerLate}
+                    onChange={(e) =>
+                      setPayrollFormulaSettings({
+                        ...payrollFormulaSettings,
+                        latePenaltyPerLate: Number(e.target.value),
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">BHXH rate (0-1)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={payrollFormulaSettings.bhxhRate}
+                    onChange={(e) =>
+                      setPayrollFormulaSettings({
+                        ...payrollFormulaSettings,
+                        bhxhRate: Number(e.target.value),
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Thuế TNCN rate (0-1)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={payrollFormulaSettings.pitRate}
+                    onChange={(e) =>
+                      setPayrollFormulaSettings({
+                        ...payrollFormulaSettings,
+                        pitRate: Number(e.target.value),
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Số ngày công chuẩn / tháng</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={payrollFormulaSettings.standardWorkingDays}
+                    onChange={(e) =>
+                      setPayrollFormulaSettings({
+                        ...payrollFormulaSettings,
+                        standardWorkingDays: Number(e.target.value),
+                      })
+                    }
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    required
+                  />
+                </div>
+              </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Clock size={16} className="inline mr-2" />
-                  {t('settings.workStartTime') || 'Work Start Time'}
-                </label>
-                <input
-                  type="time"
-                  value={companySettings.workStartTime}
-                  onChange={(e) =>
-                    setCompanySettings({ ...companySettings, workStartTime: e.target.value })
-                  }
+                <label className="block text-sm font-medium text-gray-700 mb-2">Lý do thay đổi (audit log)</label>
+                <textarea
+                  rows={3}
+                  value={payrollReason}
+                  onChange={(e) => setPayrollReason(e.target.value)}
+                  placeholder="Ví dụ: Cập nhật BHXH theo chính sách mới"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                  required
                 />
               </div>
 
-              {/* Work End Time */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Clock size={16} className="inline mr-2" />
-                  {t('settings.workEndTime') || 'Work End Time'}
-                </label>
-                <input
-                  type="time"
-                  value={companySettings.workEndTime}
-                  onChange={(e) =>
-                    setCompanySettings({ ...companySettings, workEndTime: e.target.value })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                  required
-                />
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={isLoadingPayrollFormula}
+                  className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-2"
+                >
+                  <Save size={16} />
+                  {isLoadingPayrollFormula ? 'Đang lưu...' : 'Lưu công thức lương'}
+                </button>
               </div>
-
-              {/* Break Duration */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {t('settings.breakDuration') || 'Break Duration (minutes)'}
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={companySettings.breakDuration}
-                  onChange={(e) =>
-                    setCompanySettings({
-                      ...companySettings,
-                      breakDuration: Number(e.target.value),
-                    })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                  required
-                />
-              </div>
-
-              {/* Late Threshold */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {t('settings.lateThreshold') || 'Late Threshold (minutes)'}
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={companySettings.lateThreshold}
-                  onChange={(e) =>
-                    setCompanySettings({
-                      ...companySettings,
-                      lateThreshold: Number(e.target.value),
-                    })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                  required
-                />
-              </div>
-
-              {/* Overtime Threshold */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {t('settings.overtimeThreshold') || 'Overtime Threshold (hours)'}
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  step={0.5}
-                  value={companySettings.overtimeThreshold}
-                  onChange={(e) =>
-                    setCompanySettings({
-                      ...companySettings,
-                      overtimeThreshold: Number(e.target.value),
-                    })
-                  }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                disabled={isLoadingCompanySettings}
-                className="px-6 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex items-center gap-2"
-              >
-                <Save size={16} />
-                {isLoadingCompanySettings
-                  ? t('common.loading')
-                  : t('settings.saveCompanySettings') || 'Save Company Settings'}
-              </button>
-            </div>
-          </form>
+            </form>
+          </div>
         </div>
       )}
     </div>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { t } from '../utils/i18n'
 import { Plug, Check, X, ExternalLink, Settings as SettingsIcon, Mail, Calendar, Users } from 'lucide-react'
 
@@ -9,6 +10,7 @@ interface Integration {
   icon: React.ReactNode
   status: 'connected' | 'available' | 'coming_soon'
   category: 'communication' | 'calendar' | 'hr' | 'analytics'
+  link?: string
 }
 
 export default function Integrations() {
@@ -56,9 +58,10 @@ export default function Integrations() {
     {
       id: '6',
       name: 'Payroll System',
-      description: 'Connect with payroll systems for automated salary processing',
+      description: 'Create and manage employee payroll records',
       icon: <SettingsIcon className="text-green-500" size={24} />,
-      status: 'coming_soon',
+      status: 'available',
+      link: '/payroll',
       category: 'hr',
     },
   ])
@@ -222,14 +225,24 @@ export default function Integrations() {
                     </button>
                   </>
                 ) : integration.status === 'available' ? (
-                  <button
-                    type="button"
-                    onClick={() => handleConnect(integration.id)}
-                    className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    <Plug size={16} />
-                    {t('integrations.connect') || 'Connect'}
-                  </button>
+                  integration.link ? (
+                    <Link
+                      to={integration.link}
+                      className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Plug size={16} />
+                      {t('integrations.goToPage') || 'Go to Page'}
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleConnect(integration.id)}
+                      className="flex-1 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <Plug size={16} />
+                      {t('integrations.connect') || 'Connect'}
+                    </button>
+                  )
                 ) : (
                   <button
                     type="button"
