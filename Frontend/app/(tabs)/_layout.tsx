@@ -12,12 +12,12 @@ import { getStoredRole } from '@/src/services/authService';
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { unreadCount } = useNotifications();
-  const [isManager, setIsManager] = useState(false);
+  const [isTenantAdmin, setIsTenantAdmin] = useState(false);
 
   useEffect(() => {
     const loadRole = async () => {
       const role = await getStoredRole();
-      setIsManager((role || '').toLowerCase() === 'manager');
+      setIsTenantAdmin(role === 'TENANT_ADMIN');
     };
 
     loadRole();
@@ -122,7 +122,7 @@ export default function TabLayout() {
           ),
         }}
       />
-      {isManager && (
+      {isTenantAdmin && (
         <Tabs.Screen
           name="scan-qr"
           options={{

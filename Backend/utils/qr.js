@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 
-const QR_WINDOW_SECONDS = parseInt(process.env.QR_WINDOW_SECONDS || '5', 10);
+const QR_WINDOW_SECONDS = parseInt(process.env.QR_WINDOW_SECONDS || '10', 10);
 const QR_MAX_SKEW_WINDOWS = parseInt(process.env.QR_MAX_SKEW_WINDOWS || '1', 10);
 
 const toBase64Url = (buffer) =>

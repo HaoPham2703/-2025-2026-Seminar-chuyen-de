@@ -774,3 +774,56 @@ codeZoneMobile/
   - **Sau**: `method: method` → dùng đúng method từ request body (`QR_SCAN` hoặc `MOBILE_APP`)
   - **Ngoài ra**: `qrCode: qrCode || attendance.clockIn.qrCode` → ưu tiên qrCode mới nhất khi clock-out bằng QR
 - **Root cause**: Cả 2 đều là lỗi copy-paste hoặc refactor sót. Không gây crash server (có try-catch), nhưng dữ liệu bị sai.
+
+### Lesson 32: Workflow 2 — QR Scan Attendance (Admin quét QR → chấm công nhân viên)
+
+#### Mục tiêu
+Admin quét mã QR động của nhân viên → hiện thông tin nhân viên → bấm "Chấm công" → tạo bản ghi attendance.
+
+#### Tình trạng trước khi sửa
+- `scan-qr.tsx` chỉ `Alert.alert` thông tin nhân viên — **không có nút chấm công**
+- `scannedValue` được set sau scan nhưng `employeeData` **không được lưu vào state**
+- Backend `attendance.js` yêu cầu `qrCode` token khi `method === 'QR_SCAN'` — nhưng frontend không gửi
+- Geofence check **luôn chạy** kể cả không có location → lỗi nếu không gửi location
+
+#### Giải pháp — Frontend
+
+**`Frontend/app/(tabs)/scan-qr.tsx`**:
+1. Thêm state `scannedQrToken` để lưu QR token vừa quét
+2. Sau khi scan → lưu cả `employeeData` và `qrToken` vào state (thay vì `Alert.alert`)
+3. Block "QR vừa quét" hiện tên + mã NV thật, có hint "Nhấn để chấm công →"
+4. Truyền `qrCode={scannedQrToken}` vào modal
+
+**`Frontend/src/components/EmployeeAttendanceModal.tsx`** — **TẠO MỚI**:
+- Props: `visible`, `employee`, `qrCode`, `onClose`, `onSuccess`
+- State nội bộ: `'idle' | 'loading' | 'success' | 'error'`
+- UI: header + avatar + tên/mã NV/vị trí/phòng ban + nút "Chấm công"
+- Success: icon ✓ + "Chấm công thành công!" → auto-close 2s
+- Error: banner đỏ + nút thử lại
+- Gọi `clockIn({ employeeId, qrCode, method: 'QR_SCAN' })`
+
+#### Giải pháp — Backend
+
+**`Backend/routes/attendance.js`** (clock-in & clock-out):
+- Bọc geofence check trong `if (location) { ... }` — chỉ check khi có location, không bắt lỗi khi không gửi
+- QR token validation vẫn giữ nguyên cho `method === 'QR_SCAN'`
+
+#### QR token expiry — tăng QR_WINDOW_SECONDS
+- **Công thức**: Token hợp lệ trong `2 × QR_WINDOW_SECONDS` (vì có `QR_MAX_SKEW_WINDOWS = 1`)
+- Mặc định `QR_WINDOW_SECONDS = 5` → token valid **~10 giây**
+- Tăng lên `10` → token valid **~20 giây** → admin thoải mái thao tác hơn
+- Cấu hình: `Backend/utils/qr.js` — sửa `parseInt(process.env.QR_WINDOW_SECONDS || '5', 10)` thành `'30'`
+
+#### Test thủ công
+1. Login TENANT_ADMIN → tab "Quét QR"
+2. Bấm "Bắt đầu quét" → quét mã QR nhân viên
+3. Card "Đã quét: [Tên NV]" hiện
+4. Bấm vào card → modal: tên, mã NV, vị trí, phòng ban
+5. Bấm "Chấm công" → spinner → "Chấm công thành công!" → auto-close 2s
+6. Header "Trạng thái hôm nay" cập nhật
+
+#### Files
+- `Frontend/src/components/EmployeeAttendanceModal.tsx` — **TẠO MỚI**
+- `Frontend/app/(tabs)/scan-qr.tsx` — Edit
+- `Backend/routes/attendance.js` — Edit (clock-in + clock-out)
+- `Backend/utils/qr.js` — Edit (`QR_WINDOW_SECONDS = 30`)

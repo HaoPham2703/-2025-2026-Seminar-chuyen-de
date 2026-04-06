@@ -128,16 +128,19 @@ router.post('/clock-in', async (req, res, next) => {
         });
       }
 
-      const geofenceCheck = ensureWithinGeofence(location);
-      if (!geofenceCheck.ok) {
-        return res.status(400).json({
-          success: false,
-          message: geofenceCheck.message || 'Outside allowed geofence',
-          data: {
-            distanceMeters: geofenceCheck.distanceMeters,
-            radiusMeters: geofenceCheck.radiusMeters
-          }
-        });
+      // Only check geofence when location is provided
+      if (location) {
+        const geofenceCheck = ensureWithinGeofence(location);
+        if (!geofenceCheck.ok) {
+          return res.status(400).json({
+            success: false,
+            message: geofenceCheck.message || 'Outside allowed geofence',
+            data: {
+              distanceMeters: geofenceCheck.distanceMeters,
+              radiusMeters: geofenceCheck.radiusMeters
+            }
+          });
+        }
       }
     }
 
@@ -317,16 +320,19 @@ router.post('/clock-out', async (req, res, next) => {
         });
       }
 
-      const geofenceCheck = ensureWithinGeofence(location);
-      if (!geofenceCheck.ok) {
-        return res.status(400).json({
-          success: false,
-          message: geofenceCheck.message || 'Outside allowed geofence',
-          data: {
-            distanceMeters: geofenceCheck.distanceMeters,
-            radiusMeters: geofenceCheck.radiusMeters
-          }
-        });
+      // Only check geofence when location is provided
+      if (location) {
+        const geofenceCheck = ensureWithinGeofence(location);
+        if (!geofenceCheck.ok) {
+          return res.status(400).json({
+            success: false,
+            message: geofenceCheck.message || 'Outside allowed geofence',
+            data: {
+              distanceMeters: geofenceCheck.distanceMeters,
+              radiusMeters: geofenceCheck.radiusMeters
+            }
+          });
+        }
       }
     }
 

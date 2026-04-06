@@ -1,10 +1,12 @@
 import { FadeScreenWrapper } from '@/components/fade-screen-wrapper';
 import { RefreshableScrollView } from '@/components/refreshable-scroll-view';
+import EmployeeAttendanceModal from '@/src/components/EmployeeAttendanceModal';
 import { useTabReload } from '@/hooks/use-tab-reload';
 import { useTheme } from '@/src/hooks/use-theme';
 import { getAuthToken } from '@/src/services/api';
 import { getCurrentAttendance } from '@/src/services/attendanceService';
 import { getEmployeeById, getEmployeeProfile } from '@/src/services/employeeService';
+import type { EmployeeProfile } from '@/src/services/employeeService';
 
 import { CameraView, useCameraPermissions } from 'expo-camera';
 
@@ -20,7 +22,10 @@ export default function ScanQrScreen() {
   const [employeeCode, setEmployeeCode] = useState('');
   const [attendanceStatus, setAttendanceStatus] = useState('');
   const [scannedValue, setScannedValue] = useState('');
+  const [scannedEmployee, setScannedEmployee] = useState<{ employee: EmployeeProfile } | null>(null);
+  const [scannedQrToken, setScannedQrToken] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const [permission, requestPermission] = useCameraPermissions();
@@ -54,17 +59,9 @@ export default function ScanQrScreen() {
 
     try {
       const employeeData = await getEmployeeById(value);
-
-      const firstName = employeeData.employee.personalInfo.firstName || '';
-      const lastName = employeeData.employee.personalInfo.lastName || '';
-      const fullName =
-        `${firstName} ${lastName}`.trim() ||
-        employeeData.employee.employeeId;
-
-      Alert.alert(
-        'Thông tin nhân viên',
-        `${fullName}\nMã nhân viên: ${employeeData.employee.employeeId}`
-      );
+      setScannedEmployee(employeeData);
+      setScannedQrToken(value);
+      setScannedValue(value);
     } catch (error: any) {
       Alert.alert(
         'Không tìm thấy',
@@ -202,15 +199,18 @@ export default function ScanQrScreen() {
             </TouchableOpacity>
           </View>
 
-          {scannedValue ? (
-            <View
+          {scannedEmployee ? (
+            <TouchableOpacity
               style={[
                 styles.card,
                 { backgroundColor: colors.card, borderColor: colors.border },
               ]}
+              onPress={() => setShowAttendanceModal(true)}
+              activeOpacity={0.8}
             >
               <Text style={[styles.cardTitle, { color: colors.text }]}>
-                QR vừa quét
+                Đã quét: {scannedEmployee.employee.personalInfo.firstName}{' '}
+                {scannedEmployee.employee.personalInfo.lastName}
               </Text>
 
               <Text
@@ -219,9 +219,13 @@ export default function ScanQrScreen() {
                   { color: colors.textSecondary },
                 ]}
               >
-                {scannedValue}
+                Mã NV: {scannedEmployee.employee.employeeId}
               </Text>
-            </View>
+
+              <Text style={[styles.tapHint, { color: 'hsl(25, 60%, 45%)' }]}>
+                Nhấn để chấm công →
+              </Text>
+            </TouchableOpacity>
           ) : null}
 
           {showScanner && (
@@ -268,6 +272,19 @@ export default function ScanQrScreen() {
             </View>
           )}
         </RefreshableScrollView>
+
+        <EmployeeAttendanceModal
+          visible={showAttendanceModal}
+          employee={scannedEmployee}
+          qrCode={scannedQrToken}
+          onClose={() => {
+            setShowAttendanceModal(false);
+            setScannedEmployee(null);
+            setScannedQrToken(null);
+            setScannedValue('');
+          }}
+          onSuccess={loadManagerData}
+        />
       </View>
     </FadeScreenWrapper>
   );
@@ -389,6 +406,12 @@ const styles = StyleSheet.create({
 
   closeButtonText: {
     fontWeight: '600',
+  },
+
+  tapHint: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 4,
   },
 
   permissionText: {
