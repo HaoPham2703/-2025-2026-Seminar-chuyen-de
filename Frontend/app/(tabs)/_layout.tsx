@@ -97,6 +97,12 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="payslips"
+        options={{
+          href: null, // ẩn tab payslips
+        }}
+      />
+      <Tabs.Screen
         name="payroll"
         options={{
           title: 'Payroll',
@@ -122,21 +128,25 @@ export default function TabLayout() {
           ),
         }}
       />
-      {isTenantAdmin && (
-        <Tabs.Screen
-          name="scan-qr"
-          options={{
-            title: 'Quét QR',
-            tabBarIcon: ({ focused }) => (
-              <QrCode
-                size={24}
-                color={focused ? 'hsl(25, 30%, 20%)' : 'hsl(25, 15%, 50%)'}
-                strokeWidth={focused ? 2.5 : 2}
-              />
-            ),
-          }}
-        />
-      )}
+      <Tabs.Screen
+        name="scan-qr"
+        options={
+          isTenantAdmin
+            ? {
+                title: 'Quét QR',
+                tabBarIcon: ({ focused }) => (
+                  <QrCode
+                    size={24}
+                    color={focused ? 'hsl(25, 30%, 20%)' : 'hsl(25, 15%, 50%)'}
+                    strokeWidth={focused ? 2.5 : 2}
+                  />
+                ),
+              }
+            : {
+                href: null,
+              }
+        }
+      />
       <Tabs.Screen
         name="explore"
         options={{
