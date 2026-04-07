@@ -22,7 +22,7 @@ export default function LeaveRequestsCard({ leaveRequests = [] }: LeaveRequestsC
 
   const handleSeeAll = () => {
     console.log('🔵 LeaveRequestsCard: See All clicked')
-    navigate('/attendance') // Có thể tạo page riêng cho leave requests
+    navigate('/leave-requests') // Có thể tạo page riêng cho leave requests
   }
 
   const filteredRequests = leaveRequests.filter(req => 

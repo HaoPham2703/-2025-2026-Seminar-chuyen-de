@@ -93,6 +93,13 @@ export const adminService = {
     return response.data || { records: [], total: 0 }
   },
 
+  async getAttendanceByDate(date: string): Promise<{ records: any[]; total: number; date?: string }> {
+    const response = await api.get<{ records: any[]; total: number; date?: string }>(
+      `/admin/attendance?date=${encodeURIComponent(date)}`
+    )
+    return response.data || { records: [], total: 0 }
+  },
+
   async getAllLeaveRequests(status?: string): Promise<{ requests: LeaveRequest[]; total: number }> {
     let url = '/admin/leave-requests'
     if (status) {

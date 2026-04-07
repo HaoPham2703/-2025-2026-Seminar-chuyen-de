@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useLanguage } from '../contexts/LanguageContext'
 import { adminService, type Employee } from '../services/adminService'
 import { t } from '../utils/i18n'
@@ -35,11 +35,7 @@ export default function Attendance() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
   const { language } = useLanguage()
 
-  useEffect(() => {
-    loadData()
-  }, [selectedDate])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setIsLoading(true)
       setError(null)
@@ -51,9 +47,9 @@ export default function Attendance() {
       employeesData.employees.forEach((emp) => {
         employeesMap.set(emp._id, emp)
       })
-      // Load attendance records
+      // Load attendance records for selected date
       console.log('🔄 Loading attendance records...')
-      const attendanceData = await adminService.getTodayAttendance()
+      const attendanceData = await adminService.getAttendanceByDate(selectedDate)
       console.log('✅ Attendance records loaded:', attendanceData)
       
       // Map employee info to records
@@ -67,13 +63,18 @@ export default function Attendance() {
       })
       
       setRecords(recordsWithEmployee)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('❌ Failed to load data:', err)
-      setError(err.message || 'Failed to load attendance records')
+      const message = err instanceof Error ? err.message : 'Failed to load attendance records'
+      setError(message)
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [selectedDate])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   const formatTime = (timeString: string) => {
     const date = new Date(timeString)
