@@ -2,7 +2,7 @@ import express from 'express';
 import { ObjectId } from 'mongodb';
 import { getDatabase } from '../config/database.js';
 import { authenticateToken, tenantIsolation } from '../middleware/auth.js';
-import { generateQrToken, getQrWindowSeconds } from '../utils/qr.js';
+import { generateQrToken, getQrWindowSeconds, validateQrToken } from '../utils/qr.js';
 
 const router = express.Router();
 
@@ -594,6 +594,97 @@ router.get('/:employeeId/qr-code', async (req, res, next) => {
         qrCode: employee.qrCode || null,
         qrToken,
         expiresIn: getQrWindowSeconds(),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/employees/verify-qr
+ * Quét QR token để lấy thông tin nhân viên (admin/manager quét QR của nhân viên)
+ * Body: { qrToken: string }
+ */
+router.post('/verify-qr', async (req, res, next) => {
+  try {
+    const { qrToken } = req.body;
+    const { tenantId } = req.user;
+
+    if (!qrToken || typeof qrToken !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'qrToken is required',
+      });
+    }
+
+    const parts = qrToken.split('.');
+    if (parts.length !== 3) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid QR token format',
+      });
+    }
+
+    const [tokenEmployeeId] = parts;
+
+    // Validate tokenEmployeeId là ObjectId hợp lệ
+    if (!/^[0-9a-fA-F]{24}$/.test(tokenEmployeeId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid QR token',
+      });
+    }
+
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+    const employeeObjectId = new ObjectId(tokenEmployeeId);
+
+    const employee = await db.collection('employees').findOne({
+      _id: employeeObjectId,
+      tenantId: tenantObjectId,
+    });
+
+    if (!employee) {
+      return res.status(404).json({
+        success: false,
+        message: 'Employee not found',
+      });
+    }
+
+    // Validate QR signature
+    const qrSecret = process.env.QR_SECRET || employee.qrCode?.code;
+    if (!qrSecret) {
+      return res.status(400).json({
+        success: false,
+        message: 'QR secret not configured for this employee',
+      });
+    }
+
+    const isValid = validateQrToken({
+      token: qrToken,
+      employeeId: employee._id.toString(),
+      secret: qrSecret,
+    });
+
+    if (!isValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired QR code',
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        employee: {
+          id: employee._id.toString(),
+          employeeId: employee.employeeId,
+          personalInfo: employee.personalInfo,
+          employment: employee.employment,
+          qrCode: employee.qrCode,
+          statistics: employee.statistics || {},
+        },
       },
     });
   } catch (error) {

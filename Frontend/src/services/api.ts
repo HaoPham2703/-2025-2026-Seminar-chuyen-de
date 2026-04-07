@@ -2,7 +2,7 @@
  * API Service - Base configuration và helper functions
  */
 
-import { Platform } from 'react-native';
+import { DeviceEventEmitter, Platform } from 'react-native';
 import Constants from 'expo-constants';
 
 // Detect platform và sử dụng IP address phù hợp
@@ -52,6 +52,8 @@ export interface ApiResponse<T = any> {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const TOKEN_KEY = '@dacn_auth_token';
+const AUTH_UNAUTHORIZED_EVENT = 'auth:unauthorized';
+let hasEmittedUnauthorized = false;
 
 /**
  * Get auth token from storage (AsyncStorage)
@@ -73,6 +75,7 @@ async function getAuthToken(): Promise<string | null> {
 async function setAuthToken(token: string): Promise<void> {
   try {
     await AsyncStorage.setItem(TOKEN_KEY, token);
+    hasEmittedUnauthorized = false;
     console.log('Token saved to storage successfully');
     // Verify token was saved
     const savedToken = await AsyncStorage.getItem(TOKEN_KEY);
@@ -141,6 +144,16 @@ async function apiFetch<T = any>(
         message: errorMessage,
         data
       });
+
+      // Token expired / unauthorized: clear token + emit event once
+      if (response.status === 401) {
+        await removeAuthToken();
+        if (!hasEmittedUnauthorized) {
+          hasEmittedUnauthorized = true;
+          DeviceEventEmitter.emit(AUTH_UNAUTHORIZED_EVENT);
+        }
+      }
+
       throw new Error(errorMessage);
     }
 
@@ -162,5 +175,5 @@ async function apiFetch<T = any>(
   }
 }
 
-export { apiFetch, getAuthToken, removeAuthToken, setAuthToken };
+export { apiFetch, getAuthToken, removeAuthToken, setAuthToken, AUTH_UNAUTHORIZED_EVENT };
 

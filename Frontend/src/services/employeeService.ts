@@ -116,6 +116,22 @@ export async function getEmployeeQrCode(employeeId: string): Promise<EmployeeQrC
 }
 
 /**
+ * Quét QR token để lấy thông tin nhân viên (admin/manager quét QR của nhân viên)
+ */
+export async function verifyQrToken(qrToken: string): Promise<{ employee: EmployeeProfile }> {
+  const response = await apiFetch<{ employee: EmployeeProfile }>('/employees/verify-qr', {
+    method: 'POST',
+    body: JSON.stringify({ qrToken }),
+  });
+
+  if (response.success && response.data) {
+    return response.data;
+  }
+
+  throw new Error(response.message || 'Failed to verify QR code');
+}
+
+/**
  * Lấy thông tin chi tiết của một employee (admin only)
  */
 export async function getEmployeeById(employeeId: string): Promise<{ employee: EmployeeProfile }> {

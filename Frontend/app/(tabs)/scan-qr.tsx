@@ -5,7 +5,7 @@ import { useTabReload } from '@/hooks/use-tab-reload';
 import { useTheme } from '@/src/hooks/use-theme';
 import { getAuthToken } from '@/src/services/api';
 import { getCurrentAttendance } from '@/src/services/attendanceService';
-import { getEmployeeById, getEmployeeProfile } from '@/src/services/employeeService';
+import { getEmployeeProfile, verifyQrToken } from '@/src/services/employeeService';
 import type { EmployeeProfile } from '@/src/services/employeeService';
 
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -21,7 +21,6 @@ export default function ScanQrScreen() {
   const [employeeName, setEmployeeName] = useState('');
   const [employeeCode, setEmployeeCode] = useState('');
   const [attendanceStatus, setAttendanceStatus] = useState('');
-  const [scannedValue, setScannedValue] = useState('');
   const [scannedEmployee, setScannedEmployee] = useState<{ employee: EmployeeProfile } | null>(null);
   const [scannedQrToken, setScannedQrToken] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
@@ -58,10 +57,10 @@ export default function ScanQrScreen() {
     setIsLoading(true);
 
     try {
-      const employeeData = await getEmployeeById(value);
+      const employeeData = await verifyQrToken(value);
       setScannedEmployee(employeeData);
       setScannedQrToken(value);
-      setScannedValue(value);
+      setShowScanner(false); // đóng camera sau khi quét thành công
     } catch (error: any) {
       Alert.alert(
         'Không tìm thấy',
@@ -241,10 +240,7 @@ export default function ScanQrScreen() {
                   barcodeTypes: ['qr'],
                 }}
                 onBarcodeScanned={({ data }) => {
-                  if (scannedValue) return;
-
-                  setShowScanner(false);
-                  setScannedValue(data);
+                  if (!data) return;
                   handleScan(data);
                 }}
               />
@@ -281,7 +277,6 @@ export default function ScanQrScreen() {
             setShowAttendanceModal(false);
             setScannedEmployee(null);
             setScannedQrToken(null);
-            setScannedValue('');
           }}
           onSuccess={loadManagerData}
         />

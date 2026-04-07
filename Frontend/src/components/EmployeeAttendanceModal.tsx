@@ -31,18 +31,34 @@ export default function EmployeeAttendanceModal({
   const [state, setState] = useState<ModalState>('idle');
   const [errorMessage, setErrorMessage] = useState('');
 
-  if (!employee) return null;
+  if (!employee?.employee?.id) {
+    // Guard: nếu employee.id undefined thì không cho chấm công
+    console.error('EmployeeAttendanceModal: employee.id =', employee?.employee?.id, JSON.stringify(employee));
+    return (
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <View style={styles.overlay}>
+          <View style={styles.container}>
+            <Text style={styles.errorBanner}>
+              Lỗi: Không tìm thấy ID nhân viên
+            </Text>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
 
-  const { personalInfo, employment, employeeId } = employee.employee;
+  // employee.id = MongoDB ObjectId string, employee.employeeId = mã nhân viên "EMP001"
+  const { personalInfo, employment, employeeId: employeeCode } = employee.employee;
+  const dbEmployeeId = employee.id;  // MongoDB ObjectId string
   const fullName =
-    `${personalInfo.firstName} ${personalInfo.lastName}`.trim() || employeeId;
+    `${personalInfo.firstName} ${personalInfo.lastName}`.trim() || employeeCode;
 
   const handleClockIn = async () => {
     setState('loading');
     setErrorMessage('');
     try {
       await clockIn({
-        employeeId,
+        employeeId: dbEmployeeId,
         qrCode: qrCode ?? undefined,
         method: 'QR_SCAN',
       });
@@ -119,7 +135,7 @@ export default function EmployeeAttendanceModal({
                 <Text style={styles.name}>{fullName}</Text>
                 <Text style={styles.meta}>
                   <Text style={styles.metaLabel}>Mã NV: </Text>
-                  {employeeId || '—'}
+                  {employeeCode || '—'}
                 </Text>
                 {employment?.position && (
                   <Text style={styles.meta}>

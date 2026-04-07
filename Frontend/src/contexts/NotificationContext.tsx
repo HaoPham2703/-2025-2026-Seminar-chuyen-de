@@ -1,4 +1,4 @@
-import { getAuthToken } from '@/src/services/api';
+import { AUTH_UNAUTHORIZED_EVENT, getAuthToken, removeAuthToken } from '@/src/services/api';
 import {
   deleteNotification,
   getNotifications,
@@ -9,7 +9,7 @@ import {
 } from '@/src/services/notificationService';
 import Constants from 'expo-constants';
 import React, { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
-import { Platform } from 'react-native';
+import { DeviceEventEmitter, Platform } from 'react-native';
 import { io, Socket } from 'socket.io-client';
 
 interface NotificationContextType {
@@ -114,8 +114,23 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
           }
         });
 
-        socketInstance.on('connect_error', (error) => {
-          console.error('Socket.IO connection error:', error);
+        socketInstance.on('connect_error', async (error: any) => {
+          const errorMessage = error?.message || '';
+          const isAuthError =
+            errorMessage.toLowerCase().includes('authentication failed') ||
+            errorMessage.toLowerCase().includes('jwt') ||
+            errorMessage.toLowerCase().includes('token') ||
+            error?.data?.code === 'UNAUTHORIZED';
+
+          if (isAuthError) {
+            console.warn('Socket auth failed. Clearing token and redirecting to login.');
+            await removeAuthToken();
+            socketInstance?.disconnect();
+            DeviceEventEmitter.emit(AUTH_UNAUTHORIZED_EVENT);
+          } else {
+            console.error('Socket.IO connection error:', error);
+          }
+
           if (mounted) {
             setConnected(false);
           }
