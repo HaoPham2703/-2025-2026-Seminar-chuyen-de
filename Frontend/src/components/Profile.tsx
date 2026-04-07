@@ -46,11 +46,22 @@ const MenuItem = ({ icon, title, subtitle, onPress, delay = 0, isDestructive = f
   return (
     <Animated.View entering={FadeInDown.delay(delay).duration(300)}>
       <TouchableOpacity
-        style={[styles.menuItem, { backgroundColor: colors.card }, isDestructive && { backgroundColor: isDestructive ? colors.error + '15' : colors.card }]}
+        style={[
+          styles.menuItem,
+          { backgroundColor: colors.card },
+          isDestructive && {
+            borderColor: colors.error + '30',
+            borderWidth: 1.5,
+          }
+        ]}
         onPress={onPress}
         activeOpacity={0.7}
       >
-        <View style={[styles.menuIconContainer, { backgroundColor: colors.backgroundSecondary }, isDestructive && { backgroundColor: colors.error + '20' }]}>
+        <View style={[
+          styles.menuIconContainer,
+          { backgroundColor: colors.backgroundSecondary },
+          isDestructive && { backgroundColor: colors.error + '15' }
+        ]}>
           {icon}
         </View>
         <View style={styles.menuTextContainer}>

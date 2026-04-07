@@ -13,11 +13,13 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { unreadCount } = useNotifications();
   const [isTenantAdmin, setIsTenantAdmin] = useState(false);
+  const [isRoleLoaded, setIsRoleLoaded] = useState(false);
 
   useEffect(() => {
     const loadRole = async () => {
       const role = await getStoredRole();
       setIsTenantAdmin(role === 'TENANT_ADMIN');
+      setIsRoleLoaded(true);
     };
 
     loadRole();
@@ -130,22 +132,17 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="scan-qr"
-        options={
-          isTenantAdmin
-            ? {
-                title: 'Quét QR',
-                tabBarIcon: ({ focused }) => (
-                  <QrCode
-                    size={24}
-                    color={focused ? 'hsl(25, 30%, 20%)' : 'hsl(25, 15%, 50%)'}
-                    strokeWidth={focused ? 2.5 : 2}
-                  />
-                ),
-              }
-            : {
-                href: null,
-              }
-        }
+        options={{
+          title: 'Quét QR',
+          href: isRoleLoaded && !isTenantAdmin ? null : undefined,
+          tabBarIcon: ({ focused }) => (
+            <QrCode
+              size={24}
+              color={focused ? 'hsl(25, 30%, 20%)' : 'hsl(25, 15%, 50%)'}
+              strokeWidth={focused ? 2.5 : 2}
+            />
+          ),
+        }}
       />
       <Tabs.Screen
         name="explore"
