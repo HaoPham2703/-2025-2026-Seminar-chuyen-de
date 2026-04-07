@@ -24,6 +24,15 @@ router.use((req, res, next) => {
 router.use(authenticateToken);
 router.use(tenantIsolation);
 
+function getVietnamDateString(date = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
 /**
  * GET /api/admin/dashboard
  * Lấy dữ liệu tổng hợp cho dashboard admin
@@ -99,14 +108,14 @@ router.get('/dashboard', async (req, res, next) => {
             sickEmployees.push({
               _id: employee._id.toString(),
               name: `${employee.personalInfo?.firstName || ''} ${employee.personalInfo?.lastName || ''}`.trim(),
-              department: employee.department || 'N/A',
+              department: employee.department || employee.employment?.department || 'N/A',
               status: 'Sick'
             });
           } else {
             absentEmployees.push({
               _id: employee._id.toString(),
               name: `${employee.personalInfo?.firstName || ''} ${employee.personalInfo?.lastName || ''}`.trim(),
-              department: employee.department || 'N/A',
+              department: employee.department || employee.employment?.department || 'N/A',
               status: 'Absent'
             });
           }
@@ -114,7 +123,7 @@ router.get('/dashboard', async (req, res, next) => {
           absentEmployees.push({
             _id: employee._id.toString(),
             name: `${employee.personalInfo?.firstName || ''} ${employee.personalInfo?.lastName || ''}`.trim(),
-            department: employee.department || 'N/A',
+            department: employee.department || employee.employment?.department || 'N/A',
             status: 'Absent'
           });
         }
@@ -125,7 +134,7 @@ router.get('/dashboard', async (req, res, next) => {
         presentEmployees.push({
           _id: employee._id.toString(),
           name: `${employee.personalInfo?.firstName || ''} ${employee.personalInfo?.lastName || ''}`.trim(),
-          department: employee.department || 'N/A',
+          department: employee.department || employee.employment?.department || 'N/A',
           status: 'Present',
           time: timeStr
         });
@@ -193,8 +202,8 @@ router.get('/employees', async (req, res, next) => {
       employeeId: emp.employeeId,
       name: `${emp.personalInfo?.firstName || ''} ${emp.personalInfo?.lastName || ''}`.trim(),
       email: emp.personalInfo?.email || '',
-      department: emp.department || 'N/A',
-      position: emp.position || 'N/A',
+      department: emp.department || emp.employment?.department || 'N/A',
+      position: emp.position || emp.employment?.position || 'N/A',
       phone: emp.personalInfo?.phone || ''
     }));
 
@@ -211,6 +220,50 @@ router.get('/employees', async (req, res, next) => {
 });
 
 /**
+ * GET /api/admin/attendance
+ * Lấy attendance records theo ngày (YYYY-MM-DD, timezone Asia/Ho_Chi_Minh)
+ */
+router.get('/attendance', async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { date } = req.query;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const requestedDate = typeof date === 'string' && date.trim().length > 0
+      ? date.trim()
+      : getVietnamDateString();
+
+    const attendance = await db.collection('attendance').find({
+      tenantId: tenantObjectId,
+      $expr: {
+        $eq: [
+          {
+            $dateToString: {
+              date: '$date',
+              format: '%Y-%m-%d',
+              timezone: 'Asia/Ho_Chi_Minh',
+            },
+          },
+          requestedDate,
+        ],
+      },
+    }).toArray();
+
+    res.json({
+      success: true,
+      data: {
+        records: attendance,
+        total: attendance.length,
+        date: requestedDate,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * GET /api/admin/attendance/today
  * Lấy tất cả attendance records hôm nay
  */
@@ -220,19 +273,29 @@ router.get('/attendance/today', async (req, res, next) => {
     const db = getDatabase();
     const tenantObjectId = new ObjectId(tenantId);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
+    const todayDate = getVietnamDateString();
     const attendance = await db.collection('attendance').find({
       tenantId: tenantObjectId,
-      date: today
+      $expr: {
+        $eq: [
+          {
+            $dateToString: {
+              date: '$date',
+              format: '%Y-%m-%d',
+              timezone: 'Asia/Ho_Chi_Minh',
+            },
+          },
+          todayDate,
+        ],
+      },
     }).toArray();
 
     res.json({
       success: true,
       data: {
         records: attendance,
-        total: attendance.length
+        total: attendance.length,
+        date: todayDate,
       }
     });
   } catch (error) {
