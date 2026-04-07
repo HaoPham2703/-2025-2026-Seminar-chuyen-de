@@ -1,6 +1,7 @@
 import { X } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import {
+  Alert,
   Modal,
   StyleSheet,
   Text,
@@ -8,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
+import { getCurrentAttendance } from '../services/attendanceService';
 import { getEmployeeQrCode } from '../services/employeeService';
 
 const QR_REFRESH_INTERVAL_SEC = 5;
@@ -19,6 +21,7 @@ interface EmployeeQrCardProps {
   employeeName: string;
   employeeCode?: string;
   employeeId?: string;
+  onAttendanceSuccess?: () => void;
 }
 
 export default function EmployeeQrCard({
@@ -28,6 +31,7 @@ export default function EmployeeQrCard({
   employeeName,
   employeeCode,
   employeeId,
+  onAttendanceSuccess,
 }: EmployeeQrCardProps) {
   // Double buffering:
   // currentQr = QR đang hiện trên màn hình
@@ -40,7 +44,10 @@ export default function EmployeeQrCard({
   const employeeIdRef = useRef(employeeId);
   const nextQrRef = useRef<string | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const attendancePollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastSwapAtRef = useRef<number>(Date.now());
+  const initialClockInTimeRef = useRef<string | null>(null);
+  const hasNotifiedSuccessRef = useRef(false);
 
   // Đồng bộ refs
   useEffect(() => { employeeIdRef.current = employeeId; }, [employeeId]);
@@ -59,6 +66,24 @@ export default function EmployeeQrCard({
       .then((qrResponse) => {
         if (qrResponse?.qrToken) {
           setNextQr(qrResponse.qrToken);
+        }
+      })
+      .catch(() => {
+        // giữ QR hiện tại nếu fetch lỗi
+      });
+  };
+
+  // Khi mở modal, lấy ngay QR mới nhất để tránh quét phải mã đã hết hạn
+  const refreshCurrentQrNow = () => {
+    if (!employeeIdRef.current) return;
+
+    getEmployeeQrCode(employeeIdRef.current)
+      .then((qrResponse) => {
+        if (qrResponse?.qrToken) {
+          setCurrentQr(qrResponse.qrToken);
+          setNextQr(null);
+          lastSwapAtRef.current = Date.now();
+          setCountdown(QR_REFRESH_INTERVAL_SEC);
         }
       })
       .catch(() => {
@@ -89,7 +114,32 @@ export default function EmployeeQrCard({
 
   const stopTimers = () => {
     if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    if (attendancePollIntervalRef.current) clearInterval(attendancePollIntervalRef.current);
     countdownIntervalRef.current = null;
+    attendancePollIntervalRef.current = null;
+  };
+
+  const checkAttendanceAndHandleSuccess = async () => {
+    if (!employeeIdRef.current || hasNotifiedSuccessRef.current) return;
+
+    try {
+      const current = await getCurrentAttendance(employeeIdRef.current);
+      const latestClockInTime = current.attendance?.clockIn?.time ?? null;
+
+      if (initialClockInTimeRef.current === null) {
+        initialClockInTimeRef.current = latestClockInTime;
+        return;
+      }
+
+      if (latestClockInTime && latestClockInTime !== initialClockInTimeRef.current) {
+        hasNotifiedSuccessRef.current = true;
+        onAttendanceSuccess?.();
+        Alert.alert('Chấm công thành công', 'Bạn đã được chấm công thành công.');
+        onClose();
+      }
+    } catch {
+      // ignore polling errors
+    }
   };
 
   useEffect(() => {
@@ -98,8 +148,20 @@ export default function EmployeeQrCard({
       return;
     }
 
+    hasNotifiedSuccessRef.current = false;
+    initialClockInTimeRef.current = null;
+
+    // Lấy QR hiện tại mới nhất ngay khi mở modal
+    refreshCurrentQrNow();
+
     // Fetch QR kế tiếp ngay khi mở
     fetchNextQr();
+
+    // Lấy mốc attendance ban đầu và bắt đầu poll
+    checkAttendanceAndHandleSuccess();
+    attendancePollIntervalRef.current = setInterval(() => {
+      checkAttendanceAndHandleSuccess();
+    }, 2000);
 
     // Đồng bộ nhịp countdown theo mốc thời gian thực
     lastSwapAtRef.current = Date.now();

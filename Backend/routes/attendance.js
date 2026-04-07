@@ -3,6 +3,7 @@ import { ObjectId } from 'mongodb';
 import { ATTENDANCE_STATUS } from '../config/constants.js';
 import { getDatabase } from '../config/database.js';
 import { authenticateToken, tenantIsolation } from '../middleware/auth.js';
+import { validateQrToken } from '../utils/qr.js';
 
 const router = express.Router();
 

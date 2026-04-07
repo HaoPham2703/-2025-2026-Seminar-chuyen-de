@@ -411,6 +411,7 @@ const Profile = () => {
         employeeName={fullName}
         employeeCode={employeeId}
         employeeId={profileData.employee.id}
+        onAttendanceSuccess={loadProfileData}
       />
     </View>
   );

@@ -335,6 +335,24 @@ const Index = () => {
     }
   };
 
+  const handleExternalAttendanceSuccess = async () => {
+    if (!employeeId) return;
+
+    try {
+      const attendanceData = await getCurrentAttendance(employeeId);
+      setCurrentAttendance(attendanceData.attendance);
+
+      if (attendanceData.attendance && attendanceData.isClockedIn && !attendanceData.isClockedOut) {
+        setIsClockedIn(true);
+        if (attendanceData.attendance.clockIn?.time) {
+          setClockInTime(new Date(attendanceData.attendance.clockIn.time));
+        }
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <RefreshableScrollView
@@ -433,6 +451,7 @@ const Index = () => {
         employeeName={userName}
         employeeCode={employeeCode}
         employeeId={employeeId}
+        onAttendanceSuccess={handleExternalAttendanceSuccess}
         qrExpiresIn={qrExpiresIn ?? undefined}
       />
     </View>

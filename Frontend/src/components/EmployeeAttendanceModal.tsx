@@ -31,16 +31,23 @@ export default function EmployeeAttendanceModal({
   const [state, setState] = useState<ModalState>('idle');
   const [errorMessage, setErrorMessage] = useState('');
 
+  if (!visible) {
+    return null;
+  }
+
   if (!employee?.employee?.id) {
-    // Guard: nếu employee.id undefined thì không cho chấm công
-    console.error('EmployeeAttendanceModal: employee.id =', employee?.employee?.id, JSON.stringify(employee));
     return (
       <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
         <View style={styles.overlay}>
           <View style={styles.container}>
-            <Text style={styles.errorBanner}>
-              Lỗi: Không tìm thấy ID nhân viên
-            </Text>
+            <View style={styles.body}>
+              <View style={styles.errorBanner}>
+                <Text style={styles.errorText}>Lỗi: Không tìm thấy ID nhân viên</Text>
+              </View>
+              <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
+                <Text style={styles.cancelButtonText}>Đóng</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -48,8 +55,7 @@ export default function EmployeeAttendanceModal({
   }
 
   // employee.id = MongoDB ObjectId string, employee.employeeId = mã nhân viên "EMP001"
-  const { personalInfo, employment, employeeId: employeeCode } = employee.employee;
-  const dbEmployeeId = employee.id;  // MongoDB ObjectId string
+  const { personalInfo, employment, employeeId: employeeCode, id: dbEmployeeId } = employee.employee;
   const fullName =
     `${personalInfo.firstName} ${personalInfo.lastName}`.trim() || employeeCode;
 

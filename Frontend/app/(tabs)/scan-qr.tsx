@@ -12,7 +12,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 
 import { useFocusEffect } from 'expo-router';
 import { QrCode } from 'lucide-react-native';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function ScanQrScreen() {
@@ -26,6 +26,7 @@ export default function ScanQrScreen() {
   const [showScanner, setShowScanner] = useState(false);
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const hasScannedRef = useRef(false);
 
   const [permission, requestPermission] = useCameraPermissions();
 
@@ -52,8 +53,9 @@ export default function ScanQrScreen() {
   };
 
   const handleScan = async (value: string) => {
-    if (!value) return;
+    if (!value || hasScannedRef.current) return;
 
+    hasScannedRef.current = true;
     setIsLoading(true);
 
     try {
@@ -62,12 +64,15 @@ export default function ScanQrScreen() {
       setScannedQrToken(value);
       setShowScanner(false); // đóng camera sau khi quét thành công
     } catch (error: any) {
-      Alert.alert(
-        'Không tìm thấy',
-        error.message || 'Không thể tìm thấy thông tin nhân viên'
-      );
+      const message = error?.message || 'Không thể tìm thấy thông tin nhân viên';
+      if (message.includes('Invalid or expired QR code')) {
+        Alert.alert('Mã QR hết hạn', 'Mã QR này đã hết hạn hoặc không hợp lệ. Vui lòng yêu cầu nhân viên mở lại mã QR mới.');
+      } else {
+        Alert.alert('Không tìm thấy', message);
+      }
     } finally {
       setIsLoading(false);
+      hasScannedRef.current = false;
     }
   };
 
@@ -189,7 +194,10 @@ export default function ScanQrScreen() {
 
             <TouchableOpacity
               style={[styles.actionButton, { backgroundColor: colors.accent }]}
-              onPress={() => setShowScanner(true)}
+              onPress={() => {
+                hasScannedRef.current = false;
+                setShowScanner(true);
+              }}
               disabled={isLoading}
             >
               <Text style={styles.actionButtonText}>
