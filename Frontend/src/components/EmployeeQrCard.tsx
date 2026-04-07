@@ -12,7 +12,7 @@ import QRCode from 'react-native-qrcode-svg';
 import { getCurrentAttendance } from '../services/attendanceService';
 import { getEmployeeQrCode } from '../services/employeeService';
 
-const QR_REFRESH_INTERVAL_SEC = 5;
+const QR_REFRESH_INTERVAL_SEC = 10;
 
 interface EmployeeQrCardProps {
   visible: boolean;
