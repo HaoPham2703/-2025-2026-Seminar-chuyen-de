@@ -7,6 +7,7 @@ import Schedule from './pages/Schedule'
 import Attendance from './pages/Attendance'
 import Payroll from './pages/Payroll'
 import LeaveRequests from './pages/LeaveRequests'
+import Rewards from './pages/Rewards'
 import Departments from './pages/Departments'
 import Integrations from './pages/Integrations'
 import Reports from './pages/Reports'
@@ -33,6 +34,7 @@ function App() {
                   <Route path="/attendance" element={<Attendance />} />
                   <Route path="/payroll" element={<Payroll />} />
                   <Route path="/leave-requests" element={<LeaveRequests />} />
+                  <Route path="/rewards" element={<Rewards />} />
                   <Route path="/departments" element={<Departments />} />
                   <Route path="/integrations" element={<Integrations />} />
                   <Route path="/reports" element={<Reports />} />

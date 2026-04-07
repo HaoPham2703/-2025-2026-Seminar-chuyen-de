@@ -95,6 +95,10 @@ const translations: Translations = {
     vi: 'Nghỉ phép',
     en: 'Leave Requests',
   },
+  'nav.rewards': {
+    vi: 'Khen thưởng & Kỷ luật',
+    en: 'Rewards & Discipline',
+  },
   'nav.departments': {
     vi: 'Phòng ban',
     en: 'Departments',
@@ -545,6 +549,82 @@ const translations: Translations = {
     vi: 'Thông tin lịch làm việc sẽ hiển thị ở đây. Click vào ô để chỉnh sửa lịch.',
     en: 'Schedule information will be displayed here. Click on a cell to edit schedule.',
   },
+  'schedule.shiftTitle': {
+    vi: 'Đặt lịch làm việc',
+    en: 'Set Work Schedule',
+  },
+  'schedule.shiftType': {
+    vi: 'Ca làm việc',
+    en: 'Shift Type',
+  },
+  'schedule.startTime': {
+    vi: 'Giờ vào',
+    en: 'Start Time',
+  },
+  'schedule.endTime': {
+    vi: 'Giờ ra',
+    en: 'End Time',
+  },
+  'schedule.morning': {
+    vi: 'Ca sáng (08:00-12:00)',
+    en: 'Morning (08:00-12:00)',
+  },
+  'schedule.afternoon': {
+    vi: 'Ca chiều (13:00-17:00)',
+    en: 'Afternoon (13:00-17:00)',
+  },
+  'schedule.night': {
+    vi: 'Ca tối (18:00-22:00)',
+    en: 'Night (18:00-22:00)',
+  },
+  'schedule.fullDay': {
+    vi: 'Cả ngày (09:00-18:00)',
+    en: 'Full Day (09:00-18:00)',
+  },
+  'schedule.off': {
+    vi: 'Nghỉ',
+    en: 'Day Off',
+  },
+  'schedule.custom': {
+    vi: 'Tùy chỉnh',
+    en: 'Custom Hours',
+  },
+  'schedule.customized': {
+    vi: 'Tùy chỉnh',
+    en: 'Custom',
+  },
+  'schedule.history': {
+    vi: 'Lịch sử',
+    en: 'History',
+  },
+  'schedule.schedules': {
+    vi: 'Lịch trình',
+    en: 'Schedule',
+  },
+  'schedule.changedBy': {
+    vi: 'Người thay đổi',
+    en: 'Changed By',
+  },
+  'schedule.before': {
+    vi: 'Trước',
+    en: 'Before',
+  },
+  'schedule.after': {
+    vi: 'Sau',
+    en: 'After',
+  },
+  'schedule.reason': {
+    vi: 'Lý do',
+    en: 'Reason',
+  },
+  'schedule.delete': {
+    vi: 'Xóa lịch',
+    en: 'Remove Schedule',
+  },
+  'schedule.deleteConfirm': {
+    vi: 'Xóa lịch tùy chỉnh? Nhân viên sẽ quay về lịch mặc định.',
+    en: 'Remove custom schedule? Employee will return to default.',
+  },
   'common.previous': {
     vi: 'Trước',
     en: 'Previous',
@@ -586,6 +666,58 @@ const translations: Translations = {
   'departments.employees': {
     vi: 'Nhân viên',
     en: 'Employees',
+  },
+  'departments.addDepartment': {
+    vi: 'Thêm phòng ban',
+    en: 'Add Department',
+  },
+  'departments.editDepartment': {
+    vi: 'Sửa phòng ban',
+    en: 'Edit Department',
+  },
+  'departments.deleteDepartment': {
+    vi: 'Xóa phòng ban',
+    en: 'Delete Department',
+  },
+  'departments.departmentName': {
+    vi: 'Tên phòng ban',
+    en: 'Department Name',
+  },
+  'departments.description': {
+    vi: 'Mô tả',
+    en: 'Description',
+  },
+  'departments.confirmDelete': {
+    vi: 'Xác nhận xóa phòng ban này?',
+    en: 'Confirm delete this department?',
+  },
+  'departments.cannotDelete': {
+    vi: 'Không thể xóa phòng ban có nhân viên',
+    en: 'Cannot delete department with employees',
+  },
+  'departments.manageEmployees': {
+    vi: 'Quản lý nhân viên',
+    en: 'Manage Employees',
+  },
+  'departments.assignEmployees': {
+    vi: 'Gán nhân viên',
+    en: 'Assign Employees',
+  },
+  'departments.removeEmployees': {
+    vi: 'Xóa khỏi phòng ban',
+    en: 'Remove from Department',
+  },
+  'departments.selectDepartment': {
+    vi: 'Chọn phòng ban',
+    en: 'Select Department',
+  },
+  'departments.unassigned': {
+    vi: 'Chưa phân phòng',
+    en: 'Unassigned',
+  },
+  'departments.confirmDeleteDesc': {
+    vi: 'Hành động này không thể hoàn tác.',
+    en: 'This action cannot be undone.',
   },
 
   // Reports
@@ -1020,6 +1152,184 @@ const translations: Translations = {
   'integrations.learnMore': {
     vi: 'Tìm hiểu thêm',
     en: 'Learn more',
+  },
+
+  // Rewards & Discipline
+  'rewards.title': {
+    vi: 'Khen thưởng & Kỷ luật',
+    en: 'Rewards & Discipline',
+  },
+  'rewards.subtitle': {
+    vi: 'Quản lý thưởng phạt nhân viên',
+    en: 'Manage employee rewards and discipline',
+  },
+  'rewards.rewards': {
+    vi: 'Thưởng',
+    en: 'Rewards',
+  },
+  'rewards.discipline': {
+    vi: 'Kỷ luật',
+    en: 'Discipline',
+  },
+  'rewards.settings': {
+    vi: 'Cài đặt thưởng',
+    en: 'Reward Settings',
+  },
+  'rewards.addReward': {
+    vi: 'Thêm thưởng',
+    en: 'Add Reward',
+  },
+  'rewards.addDiscipline': {
+    vi: 'Ghi nhận lỗi',
+    en: 'Record Violation',
+  },
+  'rewards.type': {
+    vi: 'Loại',
+    en: 'Type',
+  },
+  'rewards.material': {
+    vi: 'Hiện vật',
+    en: 'Material',
+  },
+  'rewards.money': {
+    vi: 'Tiền',
+    en: 'Money',
+  },
+  'rewards.value': {
+    vi: 'Giá trị',
+    en: 'Value',
+  },
+  'rewards.itemName': {
+    vi: 'Tên vật',
+    en: 'Item Name',
+  },
+  'rewards.pending': {
+    vi: 'Chờ duyệt',
+    en: 'Pending',
+  },
+  'rewards.approved': {
+    vi: 'Đã duyệt',
+    en: 'Approved',
+  },
+  'rewards.cancelled': {
+    vi: 'Đã hủy',
+    en: 'Cancelled',
+  },
+  'rewards.monthYear': {
+    vi: 'Tháng/Năm',
+    en: 'Month/Year',
+  },
+  'rewards.total': {
+    vi: 'Tổng thưởng',
+    en: 'Total Rewards',
+  },
+  'rewards.totalMaterial': {
+    vi: 'Thưởng hiện vật',
+    en: 'Material Rewards',
+  },
+  'rewards.totalMoney': {
+    vi: 'Thưởng tiền',
+    en: 'Money Rewards',
+  },
+  'rewards.disciplineType': {
+    vi: 'Loại lỗi',
+    en: 'Violation Type',
+  },
+  'rewards.late': {
+    vi: 'Đi muộn',
+    en: 'Late',
+  },
+  'rewards.absent': {
+    vi: 'Vắng không phép',
+    en: 'Absent without leave',
+  },
+  'rewards.violation': {
+    vi: 'Vi phạm nội quy',
+    en: 'Policy Violation',
+  },
+  'rewards.forgottenCheckout': {
+    vi: 'Quên check-out',
+    en: 'Forgot to check out',
+  },
+  'rewards.other': {
+    vi: 'Khác',
+    en: 'Other',
+  },
+  'rewards.penaltyAmount': {
+    vi: 'Tiền phạt',
+    en: 'Penalty Amount',
+  },
+  'rewards.description': {
+    vi: 'Mô tả',
+    en: 'Description',
+  },
+  'rewards.totalViolations': {
+    vi: 'Tổng lỗi',
+    en: 'Total Violations',
+  },
+  'rewards.ruleRequiredDays': {
+    vi: 'Đi đúng giờ đủ (ngày)',
+    en: 'On-time days required',
+  },
+  'rewards.ruleRewardType': {
+    vi: 'Loại thưởng',
+    en: 'Reward Type',
+  },
+  'rewards.ruleRewardAmount': {
+    vi: 'Số tiền thưởng',
+    en: 'Reward Amount',
+  },
+  'rewards.ruleRewardItem': {
+    vi: 'Tên vật thưởng',
+    en: 'Reward Item Name',
+  },
+  'rewards.runAutoReward': {
+    vi: 'Chạy tính thưởng tự động',
+    en: 'Run Auto Reward Calculation',
+  },
+  'rewards.ruleActive': {
+    vi: 'Bật rule tự động',
+    en: 'Enable auto reward rule',
+  },
+  'rewards.recorded': {
+    vi: 'Đã ghi nhận',
+    en: 'Recorded',
+  },
+  'rewards.waived': {
+    vi: 'Miễn phạt',
+    en: 'Waived',
+  },
+  'rewards.approve': {
+    vi: 'Duyệt',
+    en: 'Approve',
+  },
+  'rewards.waive': {
+    vi: 'Miễn phạt',
+    en: 'Waive',
+  },
+  'rewards.cancel': {
+    vi: 'Hủy',
+    en: 'Cancel',
+  },
+  'rewards.employeesQualified': {
+    vi: 'nhân viên đủ điều kiện',
+    en: 'employees qualified',
+  },
+  'rewards.autoRewardDesc': {
+    vi: 'Thưởng khi đủ ngày đi đúng giờ',
+    en: 'Reward for meeting on-time attendance threshold',
+  },
+  'rewards.noRule': {
+    vi: 'Chưa có rule. Hãy tạo rule bên dưới.',
+    en: 'No rule set. Create one below.',
+  },
+  'rewards.autoRewardResult': {
+    vi: 'Đã tạo thưởng cho',
+    en: 'Created rewards for',
+  },
+  'rewards.confirmRun': {
+    vi: 'Chạy tính thưởng tự động cho tháng này?',
+    en: 'Run auto reward for this month?',
   },
 }
 

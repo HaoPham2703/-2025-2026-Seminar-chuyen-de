@@ -1,4 +1,5 @@
 import {
+    Award,
     Building2,
     Calendar,
     Clock,
@@ -40,6 +41,7 @@ const menuItems = [
   { path: '/attendance', icon: Clock, labelKey: 'nav.attendance' },
   { path: '/payroll', icon: DollarSign, labelKey: 'nav.payroll' },
   { path: '/leave-requests', icon: ClipboardList, labelKey: 'nav.leaveRequests' },
+  { path: '/rewards', icon: Award, labelKey: 'rewards.title' },
   { path: '/departments', icon: Building2, labelKey: 'nav.departments' },
   { path: '/integrations', icon: Plug, labelKey: 'nav.integrations' },
   { path: '/reports', icon: FileText, labelKey: 'nav.reports' },

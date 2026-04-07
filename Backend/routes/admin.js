@@ -1,7 +1,8 @@
 import express from 'express';
 import { ObjectId } from 'mongodb';
 import { getDatabase } from '../config/database.js';
-import { authenticateToken, tenantIsolation } from '../middleware/auth.js';
+import { authenticateToken, tenantIsolation, requireRole } from '../middleware/auth.js';
+import { ROLES, REWARD_TYPE, REWARD_STATUS, DISCIPLINE_TYPE, DISCIPLINE_STATUS } from '../config/constants.js';
 
 const router = express.Router();
 
@@ -562,6 +563,256 @@ router.get('/attendance-settings/logs', async (req, res, next) => {
   }
 });
 
+// ─────────────────────────────────────────────
+// SCHEDULE MANAGEMENT (Employee Daily Schedules)
+// ─────────────────────────────────────────────
+
+/**
+ * Helper: insert schedule change log
+ */
+async function insertScheduleLog(db, { tenantId, employeeId, changedBy, before, after, reason }) {
+  await db.collection('scheduleChangeLogs').insertOne({
+    tenantId,
+    employeeId,
+    changedBy,
+    before,
+    after,
+    reason: reason || null,
+    changedAt: new Date(),
+  });
+}
+
+/**
+ * GET /api/admin/schedules/daily
+ * Lấy lịch ngày cho 1 tuần
+ * Query: weekStart (YYYY-MM-DD)
+ * Trả về map { [employeeId]: { [date]: dailySchedule } }
+ */
+router.get('/schedules/daily', async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { weekStart } = req.query;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    if (!weekStart) {
+      return res.status(400).json({ success: false, message: 'weekStart is required (YYYY-MM-DD)' });
+    }
+
+    // Tính ngày cuối tuần (Chủ Nhật)
+    const start = new Date(weekStart);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+
+    const schedules = await db.collection('employeeDailySchedules').find({
+      tenantId: tenantObjectId,
+      date: { $gte: weekStart, $lte: end.toISOString().split('T')[0] },
+    }).toArray();
+
+    // Build map
+    const scheduleMap = {};
+    for (const s of schedules) {
+      const empId = s.employeeId.toString();
+      if (!scheduleMap[empId]) scheduleMap[empId] = {};
+      scheduleMap[empId][s.date] = {
+        _id: s._id.toString(),
+        employeeId: empId,
+        date: s.date,
+        shiftType: s.shiftType,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        isOverridden: s.isOverridden,
+      };
+    }
+
+    res.json({ success: true, data: scheduleMap });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/admin/schedules/daily
+ * Tạo hoặc cập nhật lịch ngày cho 1 nhân viên
+ * Body: { employeeId, date, shiftType, startTime?, endTime?, reason? }
+ */
+router.post('/schedules/daily', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId, userId } = req.user;
+    const { employeeId, date, shiftType, startTime, endTime, reason } = req.body;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    if (!employeeId || !date || !shiftType) {
+      return res.status(400).json({ success: false, message: 'employeeId, date and shiftType are required' });
+    }
+
+    const VALID_SHIFTS = ['MORNING', 'AFTERNOON', 'NIGHT', 'FULL_DAY', 'OFF', 'CUSTOM'];
+    if (!VALID_SHIFTS.includes(shiftType)) {
+      return res.status(400).json({ success: false, message: 'Invalid shiftType' });
+    }
+
+    // Check existing
+    const existing = await db.collection('employeeDailySchedules').findOne({
+      tenantId: tenantObjectId,
+      employeeId: new ObjectId(employeeId),
+      date,
+    });
+
+    const now = new Date();
+    const doc = {
+      tenantId: tenantObjectId,
+      employeeId: new ObjectId(employeeId),
+      date,
+      shiftType,
+      startTime: startTime || '',
+      endTime: endTime || '',
+      isOverridden: true,
+      meta: {
+        createdBy: new ObjectId(userId),
+        createdAt: now,
+        updatedBy: new ObjectId(userId),
+        updatedAt: now,
+      },
+    };
+
+    let result;
+    if (existing) {
+      // Update
+      doc.meta.createdBy = existing.meta?.createdBy || new ObjectId(userId);
+      doc.meta.createdAt = existing.meta?.createdAt || now;
+
+      await db.collection('employeeDailySchedules').updateOne(
+        { _id: existing._id },
+        { $set: { shiftType, startTime: doc.startTime, endTime: doc.endTime, isOverridden: true, 'meta.updatedBy': new ObjectId(userId), 'meta.updatedAt': now } }
+      );
+      result = { _id: existing._id };
+
+      await insertScheduleLog(db, {
+        tenantId: tenantObjectId,
+        employeeId: new ObjectId(employeeId),
+        changedBy: new ObjectId(userId),
+        before: { shiftType: existing.shiftType, startTime: existing.startTime, endTime: existing.endTime },
+        after: { shiftType, startTime: doc.startTime, endTime: doc.endTime },
+        reason,
+      });
+    } else {
+      // Insert
+      const insertResult = await db.collection('employeeDailySchedules').insertOne(doc);
+      result = { _id: insertResult.insertedId };
+
+      await insertScheduleLog(db, {
+        tenantId: tenantObjectId,
+        employeeId: new ObjectId(employeeId),
+        changedBy: new ObjectId(userId),
+        before: null,
+        after: { shiftType, startTime: doc.startTime, endTime: doc.endTime },
+        reason,
+      });
+    }
+
+    res.status(201).json({ success: true, data: { id: result._id.toString() } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/admin/schedules/daily/:id
+ * Xóa lịch ngày → nhân viên quay về lịch mặc định
+ */
+router.delete('/schedules/daily/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId, userId } = req.user;
+    const { id } = req.params;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const schedule = await db.collection('employeeDailySchedules').findOne({
+      _id: new ObjectId(id),
+      tenantId: tenantObjectId,
+    });
+
+    if (!schedule) {
+      return res.status(404).json({ success: false, message: 'Schedule not found' });
+    }
+
+    await db.collection('employeeDailySchedules').deleteOne({ _id: new ObjectId(id) });
+
+    await insertScheduleLog(db, {
+      tenantId: tenantObjectId,
+      employeeId: schedule.employeeId,
+      changedBy: new ObjectId(userId),
+      before: { shiftType: schedule.shiftType, startTime: schedule.startTime, endTime: schedule.endTime },
+      after: null,
+      reason: 'Removed custom schedule — returned to default',
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/admin/schedules/logs
+ * Lấy lịch sử thay đổi lịch làm việc
+ * Query: employeeId?, limit?
+ */
+router.get('/schedules/logs', async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { employeeId, limit = 50 } = req.query;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const query = { tenantId: tenantObjectId };
+    if (employeeId) {
+      query.employeeId = new ObjectId(String(employeeId));
+    }
+
+    const logs = await db.collection('scheduleChangeLogs')
+      .find(query)
+      .sort({ changedAt: -1 })
+      .limit(parseInt(limit))
+      .toArray();
+
+    // Populate employee names
+    const formattedLogs = await Promise.all(logs.map(async (log) => {
+      let employeeName = null;
+      let changedByName = null;
+
+      if (log.employeeId) {
+        const emp = await db.collection('employees').findOne({ _id: log.employeeId, tenantId: tenantObjectId });
+        if (emp) employeeName = `${emp.personalInfo?.firstName || ''} ${emp.personalInfo?.lastName || ''}`.trim();
+      }
+
+      if (log.changedBy) {
+        const user = await db.collection('users').findOne({ _id: log.changedBy });
+        if (user) changedByName = user.email;
+      }
+
+      return {
+        _id: log._id.toString(),
+        employeeId: log.employeeId?.toString() || null,
+        employeeName,
+        changedBy: log.changedBy?.toString() || null,
+        changedByName,
+        before: log.before || null,
+        after: log.after || null,
+        reason: log.reason || null,
+        changedAt: log.changedAt,
+      };
+    }));
+
+    res.json({ success: true, data: { logs: formattedLogs } });
+  } catch (error) {
+    next(error);
+  }
+});
+
 /**
  * GET /api/admin/payroll-formula-settings
  * Lấy cấu hình công thức tính lương mặc định theo tenant
@@ -649,6 +900,791 @@ router.put('/payroll-formula-settings', async (req, res, next) => {
     });
 
     res.json({ success: true, data: after });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ─────────────────────────────────────────────
+// REWARD RULES
+// ─────────────────────────────────────────────
+
+/**
+ * GET /api/admin/reward-rules
+ * Lấy reward rule hiện tại của tenant
+ */
+router.get('/reward-rules', async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const rule = await db.collection('rewardRules').findOne({ tenantId: tenantObjectId });
+
+    res.json({
+      success: true,
+      data: rule ? {
+        _id: rule._id.toString(),
+        type: rule.type,
+        requiredDays: rule.requiredDays,
+        rewardType: rule.rewardType,
+        rewardAmount: rule.rewardAmount || null,
+        rewardItem: rule.rewardItem || null,
+        isActive: rule.isActive,
+      } : null,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/admin/reward-rules
+ * Tạo hoặc cập nhật reward rule
+ */
+router.put('/reward-rules', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId, userId } = req.user;
+    const { type, requiredDays, rewardType, rewardAmount, rewardItem, isActive } = req.body;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    if (!type || !requiredDays || !rewardType) {
+      return res.status(400).json({ success: false, message: 'type, requiredDays, rewardType are required' });
+    }
+
+    const existing = await db.collection('rewardRules').findOne({ tenantId: tenantObjectId });
+    const now = new Date();
+
+    if (existing) {
+      await db.collection('rewardRules').updateOne(
+        { _id: existing._id },
+        { $set: { type, requiredDays, rewardType, rewardAmount: rewardAmount || null, rewardItem: rewardItem || null, isActive: !!isActive } }
+      );
+      res.json({ success: true, data: { id: existing._id.toString() } });
+    } else {
+      const result = await db.collection('rewardRules').insertOne({
+        tenantId: tenantObjectId,
+        type,
+        requiredDays,
+        rewardType,
+        rewardAmount: rewardAmount || null,
+        rewardItem: rewardItem || null,
+        isActive: !!isActive,
+        createdBy: new ObjectId(userId),
+        createdAt: now,
+      });
+      res.status(201).json({ success: true, data: { id: result.insertedId.toString() } });
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ─────────────────────────────────────────────
+// REWARDS
+// ─────────────────────────────────────────────
+
+/**
+ * GET /api/admin/rewards
+ * Danh sách thưởng, filter theo month, year, employeeId, status, type
+ */
+router.get('/rewards', async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { month, year, employeeId, status, type } = req.query;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const query = { tenantId: tenantObjectId };
+    if (month) query.month = parseInt(month);
+    if (year) query.year = parseInt(year);
+    if (employeeId) query.employeeId = new ObjectId(String(employeeId));
+    if (status) query.status = status;
+    if (type) query.type = type;
+
+    const rewards = await db.collection('rewards').find(query).sort({ createdAt: -1 }).toArray();
+
+    const formatted = await Promise.all(rewards.map(async (r) => {
+      const emp = await db.collection('employees').findOne({ _id: r.employeeId, tenantId: tenantObjectId });
+      return {
+        _id: r._id.toString(),
+        employeeId: r.employeeId.toString(),
+        employeeName: emp ? `${emp.personalInfo?.firstName || ''} ${emp.personalInfo?.lastName || ''}`.trim() : 'Unknown',
+        type: r.type,
+        title: r.title,
+        description: r.description,
+        amount: r.amount || null,
+        itemName: r.itemName || null,
+        status: r.status,
+        month: r.month,
+        year: r.year,
+        createdAt: r.createdAt,
+      };
+    }));
+
+    res.json({ success: true, data: { rewards: formatted, total: formatted.length } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/admin/rewards
+ * Tạo thưởng mới
+ */
+router.post('/rewards', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId, userId } = req.user;
+    const { employeeId, type, title, description, amount, itemName, month, year } = req.body;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    if (!employeeId || !type || !title || month === undefined || !year) {
+      return res.status(400).json({ success: false, message: 'employeeId, type, title, month, year are required' });
+    }
+
+    if (![REWARD_TYPE.MATERIAL, REWARD_TYPE.MONEY].includes(type)) {
+      return res.status(400).json({ success: false, message: 'Invalid reward type' });
+    }
+
+    const now = new Date();
+    const result = await db.collection('rewards').insertOne({
+      tenantId: tenantObjectId,
+      employeeId: new ObjectId(employeeId),
+      type,
+      title,
+      description: description || '',
+      amount: type === REWARD_TYPE.MONEY ? (amount || 0) : null,
+      itemName: type === REWARD_TYPE.MATERIAL ? (itemName || title) : null,
+      status: REWARD_STATUS.PENDING,
+      month: parseInt(month),
+      year: parseInt(year),
+      createdBy: new ObjectId(userId),
+      createdAt: now,
+    });
+
+    res.status(201).json({ success: true, data: { id: result.insertedId.toString() } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PATCH /api/admin/rewards/:id
+ * Duyệt hoặc hủy thưởng
+ */
+router.patch('/rewards/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId, userId } = req.user;
+    const { id } = req.params;
+    const { status } = req.body;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    if (!status || ![REWARD_STATUS.APPROVED, REWARD_STATUS.CANCELLED].includes(status)) {
+      return res.status(400).json({ success: false, message: 'status must be APPROVED or CANCELLED' });
+    }
+
+    const reward = await db.collection('rewards').findOne({ _id: new ObjectId(id), tenantId: tenantObjectId });
+    if (!reward) return res.status(404).json({ success: false, message: 'Reward not found' });
+
+    await db.collection('rewards').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { status, approvedBy: new ObjectId(userId), approvedAt: new Date() } }
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ─────────────────────────────────────────────
+// DISCIPLINES
+// ─────────────────────────────────────────────
+
+/**
+ * GET /api/admin/disciplines
+ * Danh sách lỗi vi phạm, filter theo month, year, employeeId, type, status
+ */
+router.get('/disciplines', async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { month, year, employeeId, type, status } = req.query;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const query = { tenantId: tenantObjectId };
+    if (month) query.month = parseInt(month);
+    if (year) query.year = parseInt(year);
+    if (employeeId) query.employeeId = new ObjectId(String(employeeId));
+    if (type) query.type = type;
+    if (status) query.status = status;
+
+    const disciplines = await db.collection('disciplines').find(query).sort({ createdAt: -1 }).toArray();
+
+    const formatted = await Promise.all(disciplines.map(async (d) => {
+      const emp = await db.collection('employees').findOne({ _id: d.employeeId, tenantId: tenantObjectId });
+      return {
+        _id: d._id.toString(),
+        employeeId: d.employeeId.toString(),
+        employeeName: emp ? `${emp.personalInfo?.firstName || ''} ${emp.personalInfo?.lastName || ''}`.trim() : 'Unknown',
+        type: d.type,
+        description: d.description,
+        amount: d.amount || null,
+        status: d.status,
+        month: d.month,
+        year: d.year,
+        createdAt: d.createdAt,
+      };
+    }));
+
+    res.json({ success: true, data: { disciplines: formatted, total: formatted.length } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/admin/disciplines
+ * Ghi nhận lỗi vi phạm mới
+ */
+router.post('/disciplines', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId, userId } = req.user;
+    const { employeeId, type, description, amount, month, year } = req.body;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    if (!employeeId || !type || !description || month === undefined || !year) {
+      return res.status(400).json({ success: false, message: 'employeeId, type, description, month, year are required' });
+    }
+
+    const VALID_TYPES = Object.values(DISCIPLINE_TYPE);
+    if (!VALID_TYPES.includes(type)) {
+      return res.status(400).json({ success: false, message: 'Invalid discipline type' });
+    }
+
+    const now = new Date();
+    const result = await db.collection('disciplines').insertOne({
+      tenantId: tenantObjectId,
+      employeeId: new ObjectId(employeeId),
+      type,
+      description,
+      amount: amount || null,
+      status: DISCIPLINE_STATUS.RECORDED,
+      month: parseInt(month),
+      year: parseInt(year),
+      createdBy: new ObjectId(userId),
+      createdAt: now,
+    });
+
+    res.status(201).json({ success: true, data: { id: result.insertedId.toString() } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PATCH /api/admin/disciplines/:id
+ * Duyệt / bỏ qua phạt
+ */
+router.patch('/disciplines/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId, userId } = req.user;
+    const { id } = req.params;
+    const { status } = req.body;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    if (!status || ![DISCIPLINE_STATUS.APPROVED, DISCIPLINE_STATUS.WAIVED].includes(status)) {
+      return res.status(400).json({ success: false, message: 'status must be APPROVED or WAIVED' });
+    }
+
+    const discipline = await db.collection('disciplines').findOne({ _id: new ObjectId(id), tenantId: tenantObjectId });
+    if (!discipline) return res.status(404).json({ success: false, message: 'Discipline not found' });
+
+    await db.collection('disciplines').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { status, approvedBy: new ObjectId(userId), approvedAt: new Date() } }
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ─────────────────────────────────────────────
+// AUTO CALCULATE REWARDS (Monthly)
+// ─────────────────────────────────────────────
+
+/**
+ * POST /api/admin/rewards/auto-calculate
+ * Tự động tạo reward record cho nhân viên đủ ngày đúng giờ
+ * Query: month, year (defaults: current month/year)
+ */
+router.post('/rewards/auto-calculate', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId, userId } = req.user;
+    const { month, year } = req.query;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const now = new Date();
+    const targetMonth = month ? parseInt(month) : now.getMonth() + 1;
+    const targetYear = year ? parseInt(year) : now.getFullYear();
+
+    // Lấy rule thưởng
+    const rule = await db.collection('rewardRules').findOne({ tenantId: tenantObjectId, isActive: true });
+    if (!rule) {
+      return res.status(400).json({ success: false, message: 'No active reward rule found. Please set up a reward rule first.' });
+    }
+
+    // Lấy tất cả nhân viên
+    const employees = await db.collection('employees').find({ tenantId: tenantObjectId }).toArray();
+
+    // Lấy attendance records của tháng
+    const startDate = new Date(targetYear, targetMonth - 1, 1);
+    const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59, 999);
+
+    const attendanceRecords = await db.collection('attendance').find({
+      tenantId: tenantObjectId,
+      date: { $gte: startDate, $lte: endDate },
+    }).toArray();
+
+    // Đếm ngày đi đúng giờ cho mỗi nhân viên
+    const onTimeCounts = {};
+    for (const rec of attendanceRecords) {
+      const empId = rec.employeeId.toString();
+      // PRESENT = đúng giờ (không phải LATE)
+      if (rec.status !== 'LATE') {
+        onTimeCounts[empId] = (onTimeCounts[empId] || 0) + 1;
+      }
+    }
+
+    // Tạo reward records
+    const createdRecords = [];
+    for (const emp of employees) {
+      const empId = emp._id.toString();
+      const earnedDays = onTimeCounts[empId] || 0;
+
+      if (earnedDays >= rule.requiredDays) {
+        const existing = await db.collection('employeeRewardRecords').findOne({
+          tenantId: tenantObjectId,
+          employeeId: emp._id,
+          month: targetMonth,
+          year: targetYear,
+        });
+
+        if (!existing) {
+          const result = await db.collection('employeeRewardRecords').insertOne({
+            tenantId: tenantObjectId,
+            employeeId: emp._id,
+            ruleId: rule._id,
+            rewardType: rule.rewardType,
+            rewardAmount: rule.rewardAmount || null,
+            rewardItem: rule.rewardItem || null,
+            month: targetMonth,
+            year: targetYear,
+            earnedDays,
+            requiredDays: rule.requiredDays,
+            createdAt: now,
+          });
+
+          const empName = `${emp.personalInfo?.firstName || ''} ${emp.personalInfo?.lastName || ''}`.trim();
+          createdRecords.push({ id: result.insertedId.toString(), employeeId: empId, employeeName: empName, earnedDays });
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        month: targetMonth,
+        year: targetYear,
+        rule: { requiredDays: rule.requiredDays, rewardType: rule.rewardType, rewardAmount: rule.rewardAmount, rewardItem: rule.rewardItem },
+        totalQualified: createdRecords.length,
+        records: createdRecords,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/admin/rewards/auto-calculate/employees
+ * Lấy danh sách nhân viên đủ điều kiện thưởng (preview)
+ * Query: month, year
+ */
+router.get('/rewards/auto-calculate/employees', async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { month, year } = req.query;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const now = new Date();
+    const targetMonth = month ? parseInt(month) : now.getMonth() + 1;
+    const targetYear = year ? parseInt(year) : now.getFullYear();
+
+    const rule = await db.collection('rewardRules').findOne({ tenantId: tenantObjectId, isActive: true });
+    if (!rule) {
+      return res.json({ success: true, data: { rule: null, employees: [] } });
+    }
+
+    const employees = await db.collection('employees').find({ tenantId: tenantObjectId }).toArray();
+    const startDate = new Date(targetYear, targetMonth - 1, 1);
+    const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59, 999);
+
+    const attendanceRecords = await db.collection('attendance').find({
+      tenantId: tenantObjectId,
+      date: { $gte: startDate, $lte: endDate },
+    }).toArray();
+
+    const onTimeCounts = {};
+    for (const rec of attendanceRecords) {
+      const empId = rec.employeeId.toString();
+      if (rec.status !== 'LATE') {
+        onTimeCounts[empId] = (onTimeCounts[empId] || 0) + 1;
+      }
+    }
+
+    const qualified = employees
+      .filter(emp => (onTimeCounts[emp._id.toString()] || 0) >= rule.requiredDays)
+      .map(emp => ({
+        _id: emp._id.toString(),
+        name: `${emp.personalInfo?.firstName || ''} ${emp.personalInfo?.lastName || ''}`.trim(),
+        onTimeDays: onTimeCounts[emp._id.toString()] || 0,
+        requiredDays: rule.requiredDays,
+        rewardType: rule.rewardType,
+        rewardAmount: rule.rewardAmount || null,
+        rewardItem: rule.rewardItem || null,
+      }));
+
+    res.json({
+      success: true,
+      data: {
+        rule: { requiredDays: rule.requiredDays, rewardType: rule.rewardType, rewardAmount: rule.rewardAmount, rewardItem: rule.rewardItem },
+        employees: qualified,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/admin/reward-records
+ * Lấy danh sách employeeRewardRecords (log thưởng auto)
+ */
+router.get('/reward-records', async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { month, year } = req.query;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const query = { tenantId: tenantObjectId };
+    if (month) query.month = parseInt(month);
+    if (year) query.year = parseInt(year);
+
+    const records = await db.collection('employeeRewardRecords')
+      .find(query)
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    const formatted = await Promise.all(records.map(async (r) => {
+      const emp = await db.collection('employees').findOne({ _id: r.employeeId, tenantId: tenantObjectId });
+      return {
+        _id: r._id.toString(),
+        employeeId: r.employeeId.toString(),
+        employeeName: emp ? `${emp.personalInfo?.firstName || ''} ${emp.personalInfo?.lastName || ''}`.trim() : 'Unknown',
+        ruleId: r.ruleId?.toString() || null,
+        rewardType: r.rewardType,
+        rewardAmount: r.rewardAmount || null,
+        rewardItem: r.rewardItem || null,
+        month: r.month,
+        year: r.year,
+        earnedDays: r.earnedDays,
+        requiredDays: r.requiredDays,
+        createdAt: r.createdAt,
+      };
+    }));
+
+    res.json({ success: true, data: { records: formatted, total: formatted.length } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ─────────────────────────────────────────────
+// DEPARTMENTS (CRUD)
+// ─────────────────────────────────────────────
+
+/**
+ * GET /api/admin/departments
+ * Lấy danh sách phòng ban của tenant
+ */
+router.get('/departments', async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const departments = await db.collection('departments')
+      .find({ tenantId: tenantObjectId })
+      .sort({ name: 1 })
+      .toArray();
+
+    const formatted = departments.map(d => ({
+      _id: d._id.toString(),
+      name: d.name,
+      description: d.description || '',
+      employeeCount: 0, // sẽ populate từ employees collection
+    }));
+
+    res.json({ success: true, data: { departments: formatted, total: formatted.length } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/admin/departments
+ * Tạo phòng ban mới
+ */
+router.post('/departments', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId, userId } = req.user;
+    const { name, description } = req.body;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Department name is required' });
+    }
+
+    // Check duplicate name
+    const existing = await db.collection('departments').findOne({
+      tenantId: tenantObjectId,
+      name: { $regex: `^${name.trim()}$`, $options: 'i' },
+    });
+
+    if (existing) {
+      return res.status(400).json({ success: false, message: 'Department name already exists' });
+    }
+
+    const now = new Date();
+    const result = await db.collection('departments').insertOne({
+      tenantId: tenantObjectId,
+      name: name.trim(),
+      description: description?.trim() || '',
+      createdBy: new ObjectId(userId),
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    res.status(201).json({ success: true, data: { id: result.insertedId.toString() } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/admin/departments/:id
+ * Cập nhật phòng ban
+ */
+router.put('/departments/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { id } = req.params;
+    const { name, description } = req.body;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Department name is required' });
+    }
+
+    // Check duplicate (exclude self)
+    const existingDup = await db.collection('departments').findOne({
+      tenantId: tenantObjectId,
+      name: { $regex: `^${name.trim()}$`, $options: 'i' },
+      _id: { $ne: new ObjectId(id) },
+    });
+
+    if (existingDup) {
+      return res.status(400).json({ success: false, message: 'Department name already exists' });
+    }
+
+    const dept = await db.collection('departments').findOne({
+      _id: new ObjectId(id),
+      tenantId: tenantObjectId,
+    });
+
+    if (!dept) {
+      return res.status(404).json({ success: false, message: 'Department not found' });
+    }
+
+    await db.collection('departments').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { name: name.trim(), description: description?.trim() || '', updatedAt: new Date() } }
+    );
+
+    // Update all employees in old department to new department name
+    await db.collection('employees').updateMany(
+      {
+        tenantId: tenantObjectId,
+        $or: [
+          { department: dept.name },
+          { 'employment.department': dept.name },
+        ],
+      },
+      { $set: { department: name.trim(), 'employment.department': name.trim() } }
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/admin/departments/:id
+ * Xóa phòng ban — chỉ xóa được nếu không có nhân viên
+ */
+router.delete('/departments/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { id } = req.params;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const dept = await db.collection('departments').findOne({
+      _id: new ObjectId(id),
+      tenantId: tenantObjectId,
+    });
+
+    if (!dept) {
+      return res.status(404).json({ success: false, message: 'Department not found' });
+    }
+
+    // Check if department has employees
+    const employeeCount = await db.collection('employees').countDocuments({
+      tenantId: tenantObjectId,
+      $or: [
+        { department: dept.name },
+        { 'employment.department': dept.name },
+      ],
+    });
+
+    if (employeeCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete department with ${employeeCount} employee(s). Please move or remove employees first.`,
+      });
+    }
+
+    await db.collection('departments').deleteOne({ _id: new ObjectId(id) });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/admin/departments/:id/employees
+ * Lấy danh sách nhân viên trong 1 phòng ban
+ */
+router.get('/departments/:id/employees', async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { id } = req.params;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const dept = await db.collection('departments').findOne({
+      _id: new ObjectId(id),
+      tenantId: tenantObjectId,
+    });
+
+    if (!dept) {
+      return res.status(404).json({ success: false, message: 'Department not found' });
+    }
+
+    const employees = await db.collection('employees').find({
+      tenantId: tenantObjectId,
+      $or: [
+        { department: dept.name },
+        { 'employment.department': dept.name },
+      ],
+    }).toArray();
+
+    const formatted = employees.map(emp => ({
+      _id: emp._id.toString(),
+      employeeId: emp.employeeId || '',
+      name: `${emp.personalInfo?.firstName || ''} ${emp.personalInfo?.lastName || ''}`.trim(),
+      email: emp.personalInfo?.email || '',
+      department: emp.department || emp.employment?.department || dept.name,
+      position: emp.position || emp.employment?.position || 'N/A',
+      phone: emp.personalInfo?.phone || '',
+      employmentStatus: emp.employment?.status || 'ACTIVE',
+    }));
+
+    res.json({ success: true, data: { employees: formatted, total: formatted.length, department: dept.name } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PATCH /api/admin/departments/:id/employees
+ * Gán/bỏ gán nhân viên vào phòng ban
+ * Body: { employeeIds: string[], action: 'assign' | 'remove' }
+ */
+router.patch('/departments/:id/employees', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { id } = req.params;
+    const { employeeIds, action, newDepartmentName } = req.body;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const dept = await db.collection('departments').findOne({
+      _id: new ObjectId(id),
+      tenantId: tenantObjectId,
+    });
+
+    if (!dept) {
+      return res.status(404).json({ success: false, message: 'Department not found' });
+    }
+
+    if (!employeeIds || !Array.isArray(employeeIds) || employeeIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'employeeIds is required' });
+    }
+
+    if (action === 'assign') {
+      const objectIds = employeeIds.map(eid => new ObjectId(eid));
+      await db.collection('employees').updateMany(
+        { _id: { $in: objectIds }, tenantId: tenantObjectId },
+        { $set: { department: dept.name, 'employment.department': dept.name } }
+      );
+    } else if (action === 'remove') {
+      const objectIds = employeeIds.map(eid => new ObjectId(eid));
+      // Remove from this department — set to empty or 'Unassigned'
+      const newDept = newDepartmentName || '';
+      await db.collection('employees').updateMany(
+        { _id: { $in: objectIds }, tenantId: tenantObjectId },
+        { $set: { department: newDept, 'employment.department': newDept } }
+      );
+    } else {
+      return res.status(400).json({ success: false, message: 'action must be assign or remove' });
+    }
+
+    res.json({ success: true });
   } catch (error) {
     next(error);
   }
