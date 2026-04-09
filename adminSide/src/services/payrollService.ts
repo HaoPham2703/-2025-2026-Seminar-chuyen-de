@@ -79,15 +79,36 @@ export interface AutoCalcPayrollRequest {
   pitRate?: number
 }
 
+export interface LateIncident {
+  date: string
+  lateMinutes: number
+  status: string
+}
+
+export interface AbsentIncident {
+  date: string
+  status: string
+}
+
+export interface DisciplineBreakdown {
+  type: string
+  description: string
+  amount: number
+}
+
 export interface AutoCalcPayrollResponse {
   baseSalary: number
   attendanceSummary: {
     totalWorkMinutes: number
     totalOvertimeMinutes: number
     lateCount: number
+    absentCount: number
     attendanceDays: number
     standardWorkingDays: number
   }
+  lateIncidents: LateIncident[]
+  absentIncidents: AbsentIncident[]
+  disciplineBreakdown: DisciplineBreakdown[]
   suggestion: {
     allowances: PayrollItem[]
     deductions: PayrollItem[]
@@ -96,7 +117,12 @@ export interface AutoCalcPayrollResponse {
     netSalary: number
     components: {
       overtimePay: number
-      latePenalty: number
+      lateCount: number
+      latePenaltyPerLate: number
+      absentPenaltyPerDay: number
+      absentCount: number
+      disciplineAmount: number
+      rewardAmount: number
       bhxh: number
       pit: number
     }

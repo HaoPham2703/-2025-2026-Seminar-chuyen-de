@@ -9,12 +9,12 @@ interface AttendanceRecord {
   date: string
   clockIn?: {
     time: string
-    location?: string
+    location?: string | { longitude: number; latitude: number }
     qrCode?: string
   }
   clockOut?: {
     time: string
-    location?: string
+    location?: string | { longitude: number; latitude: number }
     qrCode?: string
   }
   status: string
@@ -91,6 +91,12 @@ export default function Attendance() {
     const hoursStr = String(hours).padStart(2, '0')
     const minsStr = String(mins).padStart(2, '0')
     return `${hoursStr}:${minsStr}`
+  }
+
+  const formatLocation = (location?: string | { longitude: number; latitude: number }) => {
+    if (!location) return '-'
+    if (typeof location === 'string') return location
+    return `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}`
   }
 
   const getWorkDurationMinutes = (record: AttendanceRecord) => {
@@ -266,7 +272,7 @@ export default function Attendance() {
                         {record.clockIn ? formatTime(record.clockIn.time) : '-'}
                       </div>
                       {record.clockIn?.location && (
-                        <div className="text-xs text-gray-500">{record.clockIn.location}</div>
+                        <div className="text-xs text-gray-500">{formatLocation(record.clockIn.location)}</div>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -274,7 +280,7 @@ export default function Attendance() {
                         {record.clockOut ? formatTime(record.clockOut.time) : '-'}
                       </div>
                       {record.clockOut?.location && (
-                        <div className="text-xs text-gray-500">{record.clockOut.location}</div>
+                        <div className="text-xs text-gray-500">{formatLocation(record.clockOut.location)}</div>
                       )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">

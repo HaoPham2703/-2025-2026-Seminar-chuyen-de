@@ -56,6 +56,7 @@ export default function Payroll() {
 
   // Form state
   const [formEmployee, setFormEmployee] = useState('')
+  const [employeeSearch, setEmployeeSearch] = useState('')
   const [formMonth, setFormMonth] = useState(new Date().getMonth() + 1)
   const [formYear, setFormYear] = useState(new Date().getFullYear())
   const [formBaseSalary, setFormBaseSalary] = useState('')
@@ -67,13 +68,21 @@ export default function Payroll() {
     totalWorkMinutes: number
     totalOvertimeMinutes: number
     lateCount: number
+    absentCount: number
     attendanceDays: number
     standardWorkingDays: number
     overtimePay: number
     latePenalty: number
+    absentPenalty: number
+    disciplineAmount: number
+    rewardAmount: number
     bhxh: number
     pit: number
     netSalary: number
+    // Incident breakdown
+    lateIncidents?: { date: string; lateMinutes: number }[]
+    absentIncidents?: { date: string }[]
+    disciplineBreakdown?: { type: string; description: string; amount: number }[]
   } | null>(null)
   const [autoCalculating, setAutoCalculating] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -129,6 +138,7 @@ export default function Payroll() {
   }
 
   const resetForm = () => {
+    setEmployeeSearch('')
     setFormEmployee('')
     setFormMonth(new Date().getMonth() + 1)
     setFormYear(new Date().getFullYear())
@@ -229,13 +239,22 @@ export default function Payroll() {
           : [{ name: '', amount: '' }]
       )
 
+      const latePenaltyPerLate = data.suggestion.components.latePenaltyPerLate || 50000
+      const absentPenaltyPerDay = data.suggestion.components.absentPenaltyPerDay || Math.round(data.baseSalary / (data.attendanceSummary.standardWorkingDays || 22))
+
       setAutoCalcSummary({
         ...data.attendanceSummary,
         overtimePay: data.suggestion.components.overtimePay,
-        latePenalty: data.suggestion.components.latePenalty,
+        latePenalty: data.suggestion.components.lateCount * latePenaltyPerLate,
+        absentPenalty: data.suggestion.components.absentCount * absentPenaltyPerDay,
+        disciplineAmount: data.suggestion.components.disciplineAmount,
+        rewardAmount: data.suggestion.components.rewardAmount,
         bhxh: data.suggestion.components.bhxh,
         pit: data.suggestion.components.pit,
         netSalary: data.suggestion.netSalary,
+        lateIncidents: data.lateIncidents,
+        absentIncidents: data.absentIncidents,
+        disciplineBreakdown: data.disciplineBreakdown,
       })
     } catch (err: any) {
       alert(err.message || 'Không thể tính tự động payroll')
@@ -516,8 +535,18 @@ export default function Payroll() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t('payroll.employee') || 'Nhân viên'} *
+                  {t('payroll.employee')} *
                 </label>
+                <input
+                  type="text"
+                  value={employeeSearch}
+                  onChange={e => {
+                    setEmployeeSearch(e.target.value)
+                    if (!e.target.value) setFormEmployee('')
+                  }}
+                  placeholder="Tìm tên nhân viên..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
                 <select
                   value={formEmployee}
                   onChange={(e) => setFormEmployee(e.target.value)}
@@ -526,11 +555,18 @@ export default function Payroll() {
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">-- {t('common.select') || 'Chọn'} --</option>
-                  {employees.map((emp) => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.name} — {emp.email} — {emp.code}
-                    </option>
-                  ))}
+                  {employees
+                    .filter(emp =>
+                      !employeeSearch ||
+                      emp.name.toLowerCase().includes(employeeSearch.toLowerCase()) ||
+                      emp.email.toLowerCase().includes(employeeSearch.toLowerCase()) ||
+                      emp.code.toLowerCase().includes(employeeSearch.toLowerCase())
+                    )
+                    .map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.name} — {emp.email} — {emp.code}
+                      </option>
+                    ))}
                 </select>
               </div>
 
@@ -663,15 +699,69 @@ export default function Payroll() {
               )}
 
               {autoCalcSummary && (
-                <div className="bg-indigo-50 rounded-lg p-4 text-sm text-indigo-900 space-y-1">
-                  <p><strong>Ngày công:</strong> {autoCalcSummary.attendanceDays}/{autoCalcSummary.standardWorkingDays}</p>
-                  <p><strong>Giờ làm:</strong> {(autoCalcSummary.totalWorkMinutes / 60).toFixed(1)}h</p>
-                  <p><strong>Tăng ca:</strong> {(autoCalcSummary.totalOvertimeMinutes / 60).toFixed(1)}h</p>
-                  <p><strong>Đi muộn:</strong> {autoCalcSummary.lateCount} lần</p>
-                  <p><strong>OT pay:</strong> {formatCurrency(autoCalcSummary.overtimePay, language)}</p>
-                  <p><strong>Phạt đi muộn:</strong> -{formatCurrency(autoCalcSummary.latePenalty, language)}</p>
-                  <p><strong>BHXH:</strong> -{formatCurrency(autoCalcSummary.bhxh, language)}</p>
-                  <p><strong>Thuế TNCN:</strong> -{formatCurrency(autoCalcSummary.pit, language)}</p>
+                <div className="space-y-3">
+                  {/* Summary */}
+                  <div className="bg-indigo-50 rounded-lg p-4 text-sm text-indigo-900 space-y-1">
+                    <p><strong>Ngày công:</strong> {autoCalcSummary.attendanceDays}/{autoCalcSummary.standardWorkingDays}</p>
+                    <p><strong>Giờ làm:</strong> {(autoCalcSummary.totalWorkMinutes / 60).toFixed(1)}h</p>
+                    <p><strong>Tăng ca:</strong> {(autoCalcSummary.totalOvertimeMinutes / 60).toFixed(1)}h → <strong>+{formatCurrency(autoCalcSummary.overtimePay, language)}</strong></p>
+                    {autoCalcSummary.rewardAmount > 0 && (
+                      <p><strong>Thưởng:</strong> +{formatCurrency(autoCalcSummary.rewardAmount, language)}</p>
+                    )}
+                  </div>
+
+                  {/* Late incidents */}
+                  {autoCalcSummary.lateIncidents && autoCalcSummary.lateIncidents.length > 0 && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                      <p className="text-xs font-semibold text-yellow-800 mb-2">⚠️ Đi muộn ({autoCalcSummary.lateCount} lần)</p>
+                      <div className="space-y-1">
+                        {autoCalcSummary.lateIncidents.map((inc, i) => (
+                          <div key={i} className="flex justify-between text-xs text-yellow-800">
+                            <span>📅 {new Date(inc.date).toLocaleDateString('vi-VN')} — muộn {inc.lateMinutes} phút</span>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs font-semibold text-yellow-800 mt-2">Phạt: -{formatCurrency(autoCalcSummary.latePenalty, language)}</p>
+                    </div>
+                  )}
+
+                  {/* Absent incidents */}
+                  {autoCalcSummary.absentIncidents && autoCalcSummary.absentIncidents.length > 0 && (
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                      <p className="text-xs font-semibold text-red-800 mb-2">❌ Vắng không phép ({autoCalcSummary.absentCount} ngày)</p>
+                      <div className="space-y-1">
+                        {autoCalcSummary.absentIncidents.map((inc, i) => (
+                          <div key={i} className="flex justify-between text-xs text-red-800">
+                            <span>📅 {new Date(inc.date).toLocaleDateString('vi-VN')}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs font-semibold text-red-800 mt-2">Phạt: -{formatCurrency(autoCalcSummary.absentPenalty, language)}</p>
+                    </div>
+                  )}
+
+                  {/* Discipline breakdown */}
+                  {autoCalcSummary.disciplineBreakdown && autoCalcSummary.disciplineBreakdown.length > 0 && (
+                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                      <p className="text-xs font-semibold text-orange-800 mb-2">🔴 Kỷ luật ({autoCalcSummary.disciplineBreakdown.length} lỗi)</p>
+                      <div className="space-y-1">
+                        {autoCalcSummary.disciplineBreakdown.map((d, i) => (
+                          <div key={i} className="flex justify-between text-xs text-orange-800">
+                            <span className="truncate flex-1 mr-2">📋 {d.description || d.type}</span>
+                            <span className="font-semibold">-{formatCurrency(d.amount, language)}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs font-semibold text-orange-800 mt-2">Tổng phạt: -{formatCurrency(autoCalcSummary.disciplineAmount, language)}</p>
+                    </div>
+                  )}
+
+                  {/* Fixed deductions */}
+                  <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-700 space-y-1">
+                    <p className="font-semibold text-gray-800">Các khoản khấu trừ cố định</p>
+                    <p><strong>BHXH (8%):</strong> -{formatCurrency(autoCalcSummary.bhxh, language)}</p>
+                    <p><strong>Thuế TNCN:</strong> -{formatCurrency(autoCalcSummary.pit, language)}</p>
+                  </div>
                 </div>
               )}
 

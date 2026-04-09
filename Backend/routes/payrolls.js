@@ -241,34 +241,95 @@ router.post('/auto-calculate', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN
     const start = new Date(Date.UTC(yearNum, monthNum - 1, 1, 0, 0, 0));
     const end = new Date(Date.UTC(yearNum, monthNum, 1, 0, 0, 0));
 
-    const attendanceRows = await db.collection('attendance').find({
-      tenantId: tenantObjectId,
-      employeeId: employeeObjectId,
-      date: { $gte: start, $lt: end },
-    }).toArray();
+    // Fetch attendance + disciplines + rewards in parallel
+    const [attendanceRows, disciplineRows, rewardRows] = await Promise.all([
+      db.collection('attendance').find({
+        tenantId: tenantObjectId,
+        employeeId: employeeObjectId,
+        date: { $gte: start, $lt: end },
+      }).toArray(),
+      db.collection('disciplines').find({
+        tenantId: tenantObjectId,
+        employeeId: employeeObjectId,
+        month: monthNum,
+        year: yearNum,
+        status: { $in: ['RECORDED', 'APPROVED'] },
+      }).toArray(),
+      db.collection('rewards').find({
+        tenantId: tenantObjectId,
+        employeeId: employeeObjectId,
+        month: monthNum,
+        year: yearNum,
+        status: 'APPROVED',
+      }).toArray(),
+    ]);
 
     const totalWorkMinutes = attendanceRows.reduce((sum, row) => sum + (Number(row.workDuration) || 0), 0);
     const totalOvertimeMinutes = attendanceRows.reduce((sum, row) => sum + (Number(row.overtimeDuration) || 0), 0);
-    const lateCount = attendanceRows.filter((row) => row.status === 'LATE').length;
+
+    // Per-incident breakdown from attendance
+    const lateIncidents = attendanceRows
+      .filter((row) => row.status === 'LATE')
+      .map((row) => ({
+        date: row.date,
+        lateMinutes: row.clockIn?.lateMinutes || 0,
+        status: 'LATE',
+      }))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    const absentIncidents = attendanceRows
+      .filter((row) => row.status === 'ABSENT')
+      .map((row) => ({ date: row.date, status: 'ABSENT' }))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    const lateCount = lateIncidents.length;
+    const absentCount = absentIncidents.length;
     const attendanceDays = attendanceRows.filter((row) => Number(row.workDuration || 0) > 0).length;
 
     const monthlyBaseSalary = roundMoney(baseSalary ?? employee.employment?.baseSalary ?? 0);
     const standardHours = effectiveFormula.standardWorkingDays * 8;
     const hourlyRate = standardHours > 0 ? monthlyBaseSalary / standardHours : 0;
+    const shiftSalary = effectiveFormula.standardWorkingDays > 0
+      ? monthlyBaseSalary / effectiveFormula.standardWorkingDays
+      : 0;
 
     const overtimePay = roundMoney(
       (totalOvertimeMinutes / 60) * hourlyRate * effectiveFormula.overtimeMultiplier
     );
-    const latePenalty = roundMoney(lateCount * effectiveFormula.latePenaltyPerLate);
+
+    // Penalty from disciplines collection (APPROVED only → applied to payroll)
+    const disciplineAmount = roundMoney(
+      disciplineRows
+        .filter(d => d.status === 'APPROVED' && d.amount != null)
+        .reduce((sum, d) => sum + Number(d.amount), 0)
+    );
+    const disciplineBreakdown = disciplineRows
+      .filter(d => d.status === 'APPROVED')
+      .map(d => ({
+        type: d.type,
+        description: d.description,
+        amount: Number(d.amount) || 0,
+      }));
+
+    // Reward from rewards collection (APPROVED only)
+    const rewardAmount = roundMoney(
+      rewardRows
+        .filter(r => r.amount != null)
+        .reduce((sum, r) => sum + Number(r.amount), 0)
+    );
+
     const bhxh = roundMoney(monthlyBaseSalary * effectiveFormula.bhxhRate);
     const pit = roundMoney(monthlyBaseSalary * effectiveFormula.pitRate);
 
-    const allowances = overtimePay > 0
-      ? [{ name: 'Tăng ca', amount: overtimePay }]
-      : [];
+    const allowances = [
+      ...(overtimePay > 0 ? [{ name: 'Tăng ca', amount: overtimePay }] : []),
+      ...(rewardAmount > 0 ? [{ name: 'Thưởng', amount: rewardAmount }] : []),
+    ];
 
     const deductions = [
-      ...(latePenalty > 0 ? [{ name: `Đi muộn (${lateCount} lần)`, amount: latePenalty }] : []),
+      ...(lateCount > 0 ? [{ name: `Đi muộn (${lateCount} lần)`, amount: roundMoney(lateCount * effectiveFormula.latePenaltyPerLate) }] : []),
+      ...(absentCount > 0 ? [{ name: `Vắng không phép (${absentCount} ngày)`, amount: roundMoney(absentCount * shiftSalary) }] : []),
+      ...(disciplineAmount > 0 ? [{ name: `Phạt kỷ luật (${disciplineBreakdown.length} lỗi)`, amount: disciplineAmount }] : []),
       ...(bhxh > 0 ? [{ name: `BHXH (${effectiveFormula.bhxhRate * 100}%)`, amount: bhxh }] : []),
       ...(pit > 0 ? [{ name: `Thuế TNCN (${effectiveFormula.pitRate * 100}%)`, amount: pit }] : []),
     ];
@@ -285,9 +346,13 @@ router.post('/auto-calculate', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN
           totalWorkMinutes,
           totalOvertimeMinutes,
           lateCount,
+          absentCount,
           attendanceDays,
           standardWorkingDays: effectiveFormula.standardWorkingDays,
         },
+        lateIncidents,
+        absentIncidents,
+        disciplineBreakdown,
         suggestion: {
           allowances,
           deductions,
@@ -296,7 +361,12 @@ router.post('/auto-calculate', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN
           netSalary,
           components: {
             overtimePay,
-            latePenalty,
+            lateCount,
+            absentCount,
+            latePenaltyPerLate: effectiveFormula.latePenaltyPerLate,
+            absentPenaltyPerDay: shiftSalary,
+            disciplineAmount,
+            rewardAmount,
             bhxh,
             pit,
           },
