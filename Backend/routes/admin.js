@@ -6,6 +6,28 @@ import { ROLES, REWARD_TYPE, REWARD_STATUS, DISCIPLINE_TYPE, DISCIPLINE_STATUS }
 
 const router = express.Router();
 
+// ─── Vietnam timezone helpers ───────────────────────────────────────────────────
+// Dùng chuỗi 'YYYY-MM-DD' từ frontend để query đúng ngày Vietnam
+function toVietnamMidnight(dateStr) {
+  // "2026-04-10" → 2026-04-10T00:00:00+07:00 = 2026-04-09T17:00:00Z (UTC)
+  return new Date(`${dateStr}T00:00:00.000+07:00`);
+}
+
+function toVietnamEndOfDay(dateStr) {
+  // "2026-04-10" → 2026-04-10T23:59:59.999+07:00 = 2026-04-10T16:59:59.999Z (UTC)
+  return new Date(`${dateStr}T23:59:59.999+07:00`);
+}
+
+function getVietnamMonthRange(year, month) {
+  // month: 1-12
+  const start = new Date(`${year}-${String(month).padStart(2, '0')}-01T00:00:00.000+07:00`);
+  const endMonth = month === 12 ? 1 : month + 1;
+  const endYear = month === 12 ? year + 1 : year;
+  const end = new Date(`${endYear}-${String(endMonth).padStart(2, '0')}-01T00:00:00.000+07:00`);
+  end.setMilliseconds(-1);
+  return { start, end };
+}
+
 // Debug: Log khi module được load
 console.log('✅ Admin routes module loaded');
 
@@ -599,16 +621,16 @@ router.get('/schedules/daily', async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'weekStart is required (YYYY-MM-DD)' });
     }
 
-    // Tính ngày cuối tuần (Chủ Nhật)
-    const start = new Date(weekStart);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 6);
-    end.setHours(23, 59, 59, 999);
+    // Tính ngày cuối tuần (Chủ Nhật) — dùng Vietnam timezone
+    const weekStartStr = String(weekStart);
+    const monday = toVietnamMidnight(weekStartStr);
+    // Cộng 6 ngày → Chủ Nhật
+    const sundayDate = new Date(monday.getTime() + 6 * 24 * 60 * 60 * 1000);
+    const sundayStr = sundayDate.toISOString().split('T')[0]; // "2026-04-12" (UTC date = Vietnam date)
 
     const schedules = await db.collection('employeeDailySchedules').find({
       tenantId: tenantObjectId,
-      date: { $gte: weekStart, $lte: end.toISOString().split('T')[0] },
+      date: { $gte: weekStartStr, $lte: sundayStr },
     }).toArray();
 
     // Build map
@@ -1245,13 +1267,15 @@ router.post('/rewards/auto-calculate', requireRole(ROLES.TENANT_ADMIN, ROLES.SUP
     // Lấy tất cả nhân viên
     const employees = await db.collection('employees').find({ tenantId: tenantObjectId }).toArray();
 
-    // Lấy attendance records của tháng
-    const startDate = new Date(targetYear, targetMonth - 1, 1);
-    const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59, 999);
+    // Lấy attendance records của tháng — dùng Vietnam timezone
+    const monthStart = new Date(`${targetYear}-${String(targetMonth).padStart(2,'0')}-01T00:00:00.000+07:00`);
+    const monthEnd = new Date(monthStart);
+    monthEnd.setMonth(monthEnd.getMonth() + 1);
+    monthEnd.setMilliseconds(-1);
 
     const attendanceRecords = await db.collection('attendance').find({
       tenantId: tenantObjectId,
-      date: { $gte: startDate, $lte: endDate },
+      date: { $gte: monthStart, $lte: monthEnd },
     }).toArray();
 
     // Đếm ngày đi đúng giờ cho mỗi nhân viên
@@ -1336,12 +1360,14 @@ router.get('/rewards/auto-calculate/employees', async (req, res, next) => {
     }
 
     const employees = await db.collection('employees').find({ tenantId: tenantObjectId }).toArray();
-    const startDate = new Date(targetYear, targetMonth - 1, 1);
-    const endDate = new Date(targetYear, targetMonth, 0, 23, 59, 59, 999);
+    const monthStart = new Date(`${targetYear}-${String(targetMonth).padStart(2,'0')}-01T00:00:00.000+07:00`);
+    const monthEnd = new Date(monthStart);
+    monthEnd.setMonth(monthEnd.getMonth() + 1);
+    monthEnd.setMilliseconds(-1);
 
     const attendanceRecords = await db.collection('attendance').find({
       tenantId: tenantObjectId,
-      date: { $gte: startDate, $lte: endDate },
+      date: { $gte: monthStart, $lte: monthEnd },
     }).toArray();
 
     const onTimeCounts = {};

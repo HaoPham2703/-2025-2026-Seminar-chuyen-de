@@ -238,15 +238,18 @@ router.post('/auto-calculate', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN
 
     const monthNum = parseInt(month, 10);
     const yearNum = parseInt(year, 10);
-    const start = new Date(Date.UTC(yearNum, monthNum - 1, 1, 0, 0, 0));
-    const end = new Date(Date.UTC(yearNum, monthNum, 1, 0, 0, 0));
+    // Vietnam timezone: "2026-04-01T00:00:00.000+07:00" = April 1 Vietnam midnight
+    const start = new Date(`${yearNum}-${String(monthNum).padStart(2,'0')}-01T00:00:00.000+07:00`);
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + 1);
+    end.setMilliseconds(-1); // last ms of previous month = last ms of target month
 
     // Fetch attendance + disciplines + rewards in parallel
     const [attendanceRows, disciplineRows, rewardRows] = await Promise.all([
       db.collection('attendance').find({
         tenantId: tenantObjectId,
         employeeId: employeeObjectId,
-        date: { $gte: start, $lt: end },
+        date: { $gte: start, $lte: end },
       }).toArray(),
       db.collection('disciplines').find({
         tenantId: tenantObjectId,

@@ -3,6 +3,23 @@ import { ObjectId } from 'mongodb';
 import { ATTENDANCE_STATUS } from '../config/constants.js';
 import { getDatabase } from '../config/database.js';
 import { authenticateToken, tenantIsolation } from '../middleware/auth.js';
+
+// Lấy ngày hôm nay theo múi giờ Việt Nam (UTC+7)
+function getVietnamToday() {
+  const now = new Date();
+  const vietnam = new Date(now.toLocaleString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }));
+  vietnam.setHours(0, 0, 0, 0);
+  return vietnam;
+}
+
+// Lấy khoảng ngày tháng trong múi giờ Việt Nam
+function getVietnamMonthRange(year, month) {
+  const start = new Date(`${year}-${String(month).padStart(2,'0')}-01T00:00:00.000+07:00`);
+  const end = new Date(start);
+  end.setMonth(end.getMonth() + 1);
+  end.setMilliseconds(-1);
+  return { start, end };
+}
 import { validateQrToken } from '../utils/qr.js';
 
 const router = express.Router();
@@ -145,9 +162,8 @@ router.post('/clock-in', async (req, res, next) => {
       }
     }
 
-    // Lấy ngày hiện tại (chỉ lấy phần date, không có time)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Lấy ngày hôm nay theo giờ Việt Nam
+    const today = getVietnamToday();
 
     // Lấy bản ghi chấm công mới nhất trong ngày hôm nay
     const existingAttendance = await db.collection('attendance').findOne(
