@@ -487,12 +487,28 @@ export default function Payroll() {
     setSelectedIds((prev) => {
       const already = prev.includes(emp.id)
       const next = already ? prev.filter((id) => id !== emp.id) : [...prev, emp.id]
-      // Sync bulkSelectedEmployees: keep only ids still in selectedIds
       setBulkSelectedEmployees((bulkPrev) => {
         if (already) return bulkPrev.filter((e) => e.id !== emp.id)
-        return [...bulkPrev.filter((e) => selectedIds.includes(e.id)), emp]
+        return [...bulkPrev.filter((e) => next.includes(e.id)), emp]
       })
       return next
+    })
+  }
+
+  const bulkAllSelected = departmentEmployees.length > 0 && departmentEmployees.every((emp) => selectedIds.includes(emp.id))
+
+  const toggleBulkSelectAll = () => {
+    if (bulkAllSelected) {
+      const employeeIds = departmentEmployees.map((emp) => emp.id)
+      setSelectedIds((prev) => prev.filter((id) => !employeeIds.includes(id)))
+      setBulkSelectedEmployees([])
+      return
+    }
+
+    setSelectedIds((prev) => {
+      const merged = Array.from(new Set([...prev, ...departmentEmployees.map((emp) => emp.id)]))
+      setBulkSelectedEmployees(departmentEmployees)
+      return merged
     })
   }
 
@@ -757,9 +773,22 @@ export default function Payroll() {
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[95vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
-              <h2 className="text-xl font-bold text-gray-900">{modalTitle}</h2>
-              <p className="text-sm text-gray-500 mt-1">{modalSubtitle}</p>
+            <div className="p-6 border-b border-gray-200 flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">{modalTitle}</h2>
+                <p className="text-sm text-gray-500 mt-1">{modalSubtitle}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowModal(false)
+                  resetForm()
+                }}
+                aria-label="Đóng popup"
+                className="shrink-0 w-9 h-9 rounded-full border border-gray-200 text-gray-500 hover:text-gray-700 hover:bg-gray-100 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                ×
+              </button>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
@@ -813,19 +842,29 @@ export default function Payroll() {
                           {selectedDepartment ? 'Chưa có nhân viên trong phòng ban này' : 'Hãy chọn phòng ban trước'}
                         </p>
                       ) : (
-                        departmentEmployees.map((emp) => (
-                          <label key={emp.id} className="flex items-center gap-3 text-sm text-gray-700 cursor-pointer">
+                        <>
+                          <label className="flex items-center gap-3 text-sm text-gray-700 cursor-pointer border-b border-gray-100 pb-2 mb-2">
                             <input
                               type="checkbox"
-                              checked={selectedIds.includes(emp.id)}
-                              onChange={() => toggleBulkSelectOne(emp)}
+                              checked={bulkAllSelected}
+                              onChange={toggleBulkSelectAll}
                             />
-                            <span className="flex-1">
-                              <span className="font-medium text-gray-900">{emp.name}</span>
-                              <span className="text-xs text-gray-400 ml-2">{emp.code} · {emp.email}</span>
-                            </span>
+                            <span className="flex-1 font-medium text-gray-900">Chọn tất cả</span>
                           </label>
-                        ))
+                          {departmentEmployees.map((emp) => (
+                            <label key={emp.id} className="flex items-center gap-3 text-sm text-gray-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.includes(emp.id)}
+                                onChange={() => toggleBulkSelectOne(emp)}
+                              />
+                              <span className="flex-1">
+                                <span className="font-medium text-gray-900">{emp.name}</span>
+                                <span className="text-xs text-gray-400 ml-2">{emp.code} · {emp.email}</span>
+                              </span>
+                            </label>
+                          ))}
+                        </>
                       )}
                     </div>
                     <div className="mt-3">
@@ -1049,7 +1088,7 @@ export default function Payroll() {
                 <div className="bg-indigo-50 rounded-lg p-4 text-sm text-indigo-900">
                   {selectedDepartment
                     ? `Đang tạo phiếu cho ${selectedIds.length} nhân viên thuộc phòng ban đã chọn`
-                    : 'Hãy chọn phòng ban để tải danh sách nhân viên, sau đó tick những người cần tạo phiếu lương.'}
+                    : 'Hãy chọn phòng ban để tải danh sách nhân viên, sau đó có thể tick "Chọn tất cả" hoặc chọn từng người cần tạo phiếu lương.'}
                 </div>
               )}
 
