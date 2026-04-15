@@ -27,6 +27,7 @@ import {
 } from 'lucide-react-native';
 import { getAttendanceHistory, type AttendanceRecord as ApiAttendanceRecord } from '@/src/services/attendanceService';
 import { getEmployeeProfile } from '@/src/services/employeeService';
+import { getApprovedLeaves, type LeaveRequest } from '@/src/services/leaveService';
 import LeaveRequestModal from '@/src/components/LeaveRequestModal';
 import AttendanceAdjustmentModal from '@/src/components/AttendanceAdjustmentModal';
 import { getAuthToken } from '@/src/services/api';
@@ -518,7 +519,7 @@ export default function AttendanceScreen() {
   const loadAttendanceData = async () => {
     try {
       setLoading(true);
-      
+
       // Verify token exists
       const token = await getAuthToken();
       if (!token) {
@@ -532,16 +533,20 @@ export default function AttendanceScreen() {
       const endDate = new Date(selectedYear, selectedMonth + 1, 0);
       endDate.setHours(23, 59, 59, 999);
 
-      const historyData = await getAttendanceHistory(employeeId, {
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString(),
-        limit: 100,
-      });
+      // Load attendance history and approved leave requests in parallel
+      const [historyData, approvedLeaves] = await Promise.all([
+        getAttendanceHistory(employeeId, {
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+          limit: 100,
+        }),
+        getApprovedLeaves(employeeId),
+      ]);
 
-      // Map API records to UI format
-      const mappedRecords = mapApiRecordsToUI(historyData.records, selectedYear, selectedMonth);
+      // Map API records to UI format (include leave status)
+      const mappedRecords = mapApiRecordsToUI(historyData.records, approvedLeaves, selectedYear, selectedMonth);
       const newStats = calculateStats(mappedRecords, selectedYear, selectedMonth);
-      
+
       setRecords(mappedRecords);
       setStats(newStats);
     } catch (error: any) {
@@ -568,8 +573,10 @@ export default function AttendanceScreen() {
   };
 
   // Map API attendance records to UI format
+  // approvedLeaves: list of APPROVED leave requests — used to mark leave days
   const mapApiRecordsToUI = (
     apiRecords: ApiAttendanceRecord[],
+    approvedLeaves: LeaveRequest[],
     year: number,
     month: number
   ): AttendanceRecord[] => {
@@ -580,7 +587,7 @@ export default function AttendanceScreen() {
     for (let day = 1; day <= daysInMonth; day++) {
       const fullDate = new Date(year, month, day);
       const dayOfWeek = getDayOfWeek(year, month, day);
-      
+
       recordsMap.set(day, {
         date: day,
         day: dayOfWeek,
@@ -596,7 +603,7 @@ export default function AttendanceScreen() {
     apiRecords.forEach((apiRecord) => {
       const recordDate = new Date(apiRecord.date);
       const day = recordDate.getDate();
-      
+
       if (recordDate.getFullYear() === year && recordDate.getMonth() === month) {
         const inTime = apiRecord.clockIn
           ? formatTimeFromDate(new Date(apiRecord.clockIn.time))
@@ -619,6 +626,11 @@ export default function AttendanceScreen() {
           status = 'absent';
         }
 
+        // If an ABSENT record was created from an approved leave request, show it as 'leave'
+        if (status === 'absent' && apiRecord.leaveRequestId) {
+          status = 'leave';
+        }
+
         recordsMap.set(day, {
           date: day,
           day: getDayOfWeek(year, month, day),
@@ -628,6 +640,31 @@ export default function AttendanceScreen() {
           status,
           fullDate: recordDate,
         });
+      }
+    });
+
+    // Mark approved leave days that have no attendance record yet
+    approvedLeaves.forEach((leave) => {
+      const start = new Date(leave.startDate);
+      const end = new Date(leave.endDate);
+      const current = new Date(start);
+
+      while (current <= end) {
+        if (current.getFullYear() === year && current.getMonth() === month) {
+          const day = current.getDate();
+          // Only override if this day is still 'absent' (no attendance record)
+          const existing = recordsMap.get(day);
+          if (existing && existing.status === 'absent') {
+            recordsMap.set(day, {
+              ...existing,
+              status: 'leave',
+              inTime: '-',
+              outTime: '-',
+              totalHours: '-',
+            });
+          }
+        }
+        current.setDate(current.getDate() + 1);
       }
     });
 

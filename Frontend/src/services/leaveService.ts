@@ -105,3 +105,12 @@ export async function getAttendanceAdjustments(employeeId: string): Promise<Atte
 
   throw new Error(response.message || 'Failed to load attendance adjustments');
 }
+
+/**
+ * Lấy tất cả leave requests đã duyệt của 1 employee
+ * Dùng cho attendance screen: hiển thị ngày nghỉ phép đã duyệt
+ */
+export async function getApprovedLeaves(employeeId: string): Promise<LeaveRequest[]> {
+  const all = await getLeaveRequests(employeeId);
+  return all.filter(lr => lr.status === 'APPROVED');
+}

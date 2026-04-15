@@ -60,12 +60,17 @@ export default function LeaveRequestModal({
     setSubmitting(true);
     setError(null);
     try {
-      const isoDate = date.toISOString();
+      // Dùng format YYYY-MM-DD theo múi giờ Việt Nam để tránh lệch ngày UTC
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const localDateStr = `${year}-${month}-${day}`; // e.g. "2026-04-15"
+
       await createLeaveRequest({
         employeeId,
         type,
-        startDate: isoDate,
-        endDate: isoDate,
+        startDate: localDateStr,
+        endDate: localDateStr,
         reason: reason.trim(),
       });
       onClose();

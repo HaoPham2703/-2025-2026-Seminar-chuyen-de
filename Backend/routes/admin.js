@@ -654,6 +654,10 @@ router.get('/leave-requests', async (req, res, next) => {
  * PATCH /api/admin/leave-requests/:id
  * Duyệt hoặc từ chối yêu cầu nghỉ phép
  * Body: { status: 'APPROVED' | 'REJECTED', reviewComment?: string }
+ *
+ * Side effects on APPROVED:
+ *   1. Creates/updates attendance records (status='ABSENT') for each day in the leave range
+ *   2. Sends an in-app notification to the employee
  */
 router.patch('/leave-requests/:id', async (req, res, next) => {
   try {
@@ -690,6 +694,9 @@ router.patch('/leave-requests/:id', async (req, res, next) => {
       });
     }
 
+    const now = new Date();
+
+    // ── Update leave request ──────────────────────────────────────────────
     await db.collection('leaveRequests').updateOne(
       { _id: requestId },
       {
@@ -697,11 +704,134 @@ router.patch('/leave-requests/:id', async (req, res, next) => {
           status,
           reviewComment: reviewComment || null,
           reviewedBy: new ObjectId(userId),
-          reviewedAt: new Date(),
-          updatedAt: new Date(),
+          reviewedAt: now,
+          updatedAt: now,
         },
       }
     );
+
+    // ── APPROVED side effects ──────────────────────────────────────────────
+    if (status === 'APPROVED') {
+      const startDate = new Date(request.startDate);
+      const endDate = new Date(request.endDate);
+
+      // Iterate each day in the leave range and upsert attendance records
+      const current = new Date(startDate);
+      while (current <= endDate) {
+        const dayStr = current.toISOString().split('T')[0]; // 'YYYY-MM-DD'
+        const dayDate = new Date(`${dayStr}T00:00:00.000+07:00`);
+
+        // Only create attendance for weekdays (Mon–Fri)
+        const dayOfWeek = dayDate.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+          const existing = await db.collection('attendance').findOne({
+            tenantId: new ObjectId(tenantId),
+            employeeId: request.employeeId,
+            date: dayDate,
+          });
+
+          if (existing) {
+            // Don't overwrite a PRESENT/LATE clock-in that already happened
+            if (existing.clockIn) {
+              // Update status only — person already checked in; mark it as on-leave context
+              await db.collection('attendance').updateOne(
+                { _id: existing._id },
+                {
+                  $set: {
+                    status: 'ABSENT',
+                    leaveRequestId: requestId,
+                    notes: `[Nghỉ phép] ${request.type}`,
+                    updatedAt: now,
+                  },
+                }
+              );
+            }
+          } else {
+            // No record exists — create one as ABSENT for this leave day
+            await db.collection('attendance').insertOne({
+              tenantId: new ObjectId(tenantId),
+              employeeId: request.employeeId,
+              userId: request.employeeId, // self-referencing for leave
+              date: dayDate,
+              clockIn: null,
+              clockOut: null,
+              workDuration: 0,
+              breakDuration: 0,
+              overtimeDuration: 0,
+              status: 'ABSENT',
+              leaveRequestId: requestId,
+              notes: `[Nghỉ phép] ${request.type}`,
+              createdAt: now,
+              updatedAt: now,
+            });
+          }
+        }
+
+        current.setDate(current.getDate() + 1);
+      }
+
+      // ── Send notification to employee ──────────────────────────────────
+      // Get employee userId to send real-time notification
+      const employee = await db.collection('employees').findOne({
+        _id: request.employeeId,
+        tenantId: new ObjectId(tenantId),
+      });
+
+      if (employee && employee.userId) {
+        const notificationDoc = {
+          tenantId: new ObjectId(tenantId),
+          recipientId: employee.userId,
+          type: 'LEAVE_APPROVED',
+          title: 'Yêu cầu nghỉ phép được duyệt',
+          message: `Yêu cầu nghỉ phép ngày ${request.startDate}${request.endDate !== request.startDate ? ` – ${request.endDate}` : ''} đã được duyệt.`,
+          relatedId: requestId,
+          relatedType: 'leaveRequest',
+          isRead: false,
+          createdAt: now,
+        };
+        await db.collection('notifications').insertOne(notificationDoc);
+
+        // Emit real-time notification via Socket.IO
+        try {
+          const { getSocketIO } = await import('../config/socket.js');
+          const io = getSocketIO();
+          const userRoom = `user:${employee.userId.toString()}`;
+          io.to(userRoom).emit('new_notification', notificationDoc);
+        } catch (socketErr) {
+          // Socket not initialized — notification is still saved in DB
+          console.warn('Socket.IO not available, notification stored in DB only');
+        }
+      }
+    } else {
+      // ── REJECTED: notify employee ─────────────────────────────────────
+      const employee = await db.collection('employees').findOne({
+        _id: request.employeeId,
+        tenantId: new ObjectId(tenantId),
+      });
+
+      if (employee && employee.userId) {
+        const notificationDoc = {
+          tenantId: new ObjectId(tenantId),
+          recipientId: employee.userId,
+          type: 'LEAVE_REJECTED',
+          title: 'Yêu cầu nghỉ phép bị từ chối',
+          message: `Yêu cầu nghỉ phép ngày ${request.startDate}${request.endDate !== request.startDate ? ` – ${request.endDate}` : ''} đã bị từ chối.${reviewComment ? ` Lý do: ${reviewComment}` : ''}`,
+          relatedId: requestId,
+          relatedType: 'leaveRequest',
+          isRead: false,
+          createdAt: now,
+        };
+        await db.collection('notifications').insertOne(notificationDoc);
+
+        try {
+          const { getSocketIO } = await import('../config/socket.js');
+          const io = getSocketIO();
+          io.to(`user:${employee.userId.toString()}`).emit('new_notification', notificationDoc);
+        } catch (socketErr) {
+          console.warn('Socket.IO not available, notification stored in DB only');
+        }
+      }
+    }
 
     res.json({ success: true, message: `Leave request ${status.toLowerCase()}` });
   } catch (error) {

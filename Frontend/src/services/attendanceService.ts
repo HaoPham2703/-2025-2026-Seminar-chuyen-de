@@ -48,6 +48,7 @@ export interface AttendanceRecord {
   expectedStartTime: string;
   expectedEndTime: string;
   notes?: string;
+  leaveRequestId?: string;
 }
 
 export interface CurrentAttendanceResponse {

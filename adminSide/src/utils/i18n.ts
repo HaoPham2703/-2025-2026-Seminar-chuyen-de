@@ -95,6 +95,10 @@ const translations: Translations = {
     vi: 'Nghỉ phép',
     en: 'Leave Requests',
   },
+  'nav.notifications': {
+    vi: 'Thông báo',
+    en: 'Notifications',
+  },
   'nav.rewards': {
     vi: 'Khen thưởng & Kỷ luật',
     en: 'Rewards & Discipline',
@@ -1444,6 +1448,32 @@ const translations: Translations = {
   'rewards.confirmRun': {
     vi: 'Chạy tính thưởng tự động cho tháng này?',
     en: 'Run auto reward for this month?',
+  },
+
+  // Notifications
+  'notifications.title': {
+    vi: 'Gửi thông báo',
+    en: 'Send Notification',
+  },
+  'notifications.subtitle': {
+    vi: 'Gửi thông báo cho nhân viên trong tổ chức',
+    en: 'Send notifications to employees in the organization',
+  },
+  'notifications.compose': {
+    vi: 'Soạn thông báo',
+    en: 'Compose Notification',
+  },
+  'notifications.send': {
+    vi: 'Gửi thông báo',
+    en: 'Send Notification',
+  },
+  'notifications.sent': {
+    vi: 'Đã gửi',
+    en: 'Sent',
+  },
+  'notifications.sending': {
+    vi: 'Đang gửi...',
+    en: 'Sending...',
   },
 }
 

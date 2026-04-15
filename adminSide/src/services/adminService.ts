@@ -180,4 +180,46 @@ export const adminService = {
   async deleteEmployee(id: string): Promise<void> {
     await api.delete(`/admin/employees/${id}`)
   },
+
+  async sendNotification(payload: {
+    title: string
+    message: string
+    type: string
+    priority: string
+    targetAudience: string
+    targetDepartment?: string
+    targetEmployeeIds?: string[]
+    includeInactive?: boolean
+  }): Promise<{ notificationId: string; recipientsCount: number }> {
+    const response = await api.post<{ notificationId: string; recipientsCount: number }>(
+      '/notifications/send',
+      payload
+    )
+    return response.data!
+  },
+
+  async getAllDepartments(): Promise<{ departments: any[]; total: number }> {
+    const response = await api.get<{ departments: any[]; total: number }>('/admin/departments')
+    return response.data || { departments: [], total: 0 }
+  },
+
+  async getSentNotifications(page = 1): Promise<{
+    notifications: Array<{
+      id: string
+      type: string
+      title: string
+      message: string
+      priority: string
+      targetAudience: string
+      recipientsCount: number
+      sentAt: string
+    }>
+    pagination: { page: number; limit: number; total: number; totalPages: number }
+  }> {
+    const response = await api.get<{
+      notifications: Array<any>
+      pagination: any
+    }>(`/notifications/sent?page=${page}&limit=20`)
+    return response.data || { notifications: [], pagination: { page: 1, limit: 20, total: 0, totalPages: 0 } }
+  },
 }

@@ -117,6 +117,30 @@ router.post('/clock-in', async (req, res, next) => {
       });
     }
 
+    // ── Conflict check: ngăn clock-in khi đang nghỉ phép đã duyệt ──────────
+    const todayVietnam = getVietnamToday();
+    const todayStr = todayVietnam.toISOString().split('T')[0];
+
+    const approvedLeave = await db.collection('leaveRequests').findOne({
+      tenantId: tenantObjectId,
+      employeeId: employeeObjectId,
+      status: 'APPROVED',
+      startDate: { $lte: todayStr },
+      endDate: { $gte: todayStr },
+    });
+
+    if (approvedLeave) {
+      return res.status(400).json({
+        success: false,
+        message: `Bạn đang trong ngày nghỉ phép (${approvedLeave.type}) từ ngày ${approvedLeave.startDate} đến ${approvedLeave.endDate}. Không thể chấm công.`,
+        data: {
+          leaveType: approvedLeave.type,
+          startDate: approvedLeave.startDate,
+          endDate: approvedLeave.endDate,
+        }
+      });
+    }
+
     if (requiresQrValidation) {
       if (!qrCode) {
         return res.status(400).json({

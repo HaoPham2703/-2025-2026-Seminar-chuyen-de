@@ -10,6 +10,7 @@ import HelpCenter from './pages/HelpCenter'
 import Integrations from './pages/Integrations'
 import LeaveRequests from './pages/LeaveRequests'
 import Login from './pages/Login'
+import Notifications from './pages/Notifications'
 import Payroll from './pages/Payroll'
 import Reports from './pages/Reports'
 import Rewards from './pages/Rewards'
@@ -35,6 +36,7 @@ function App() {
                   <Route path="/attendance" element={<Attendance />} />
                   <Route path="/payroll" element={<Payroll />} />
                   <Route path="/leave-requests" element={<LeaveRequests />} />
+                  <Route path="/notifications" element={<Notifications />} />
                   <Route path="/rewards" element={<Rewards />} />
                   <Route path="/employees" element={<Employees />} />
                   <Route path="/departments" element={<Departments />} />

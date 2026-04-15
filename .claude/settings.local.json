@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(find D:/Project/DACN/MobileClient/codeZoneMobile -maxdepth 3 -name package.json -not -path */node_modules/*)",
-      "Read(//dev/**)"
+      "Read(//dev/**)",
+      "Read(//d/Project/DACN/**)"
     ]
   }
 }
