@@ -47,7 +47,7 @@ const menuItems = [
   { path: '/rewards', icon: Award, labelKey: 'rewards.title' },
   { path: '/employees', icon: Users, labelKey: 'nav.employees' },
   { path: '/departments', icon: Building2, labelKey: 'nav.departments' },
-  { path: '/integrations', icon: Plug, labelKey: 'nav.integrations' },
+  // { path: '/integrations', icon: Plug, labelKey: 'nav.integrations' },
   { path: '/reports', icon: FileText, labelKey: 'nav.reports' },
 ]
 
