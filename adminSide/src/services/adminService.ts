@@ -156,4 +156,28 @@ export const adminService = {
   }): Promise<void> {
     await api.put('/admin/payroll-formula-settings', payload)
   },
+
+  async createEmployee(payload: {
+    employeeId?: string
+    name: string
+    email: string
+    position?: string
+    phone?: string
+  }): Promise<{ id: string }> {
+    const response = await api.post<{ id: string }>('/admin/employees', payload)
+    return response.data!
+  },
+
+  async updateEmployee(id: string, payload: {
+    name?: string
+    email?: string
+    position?: string
+    phone?: string
+  }): Promise<void> {
+    await api.put(`/admin/employees/${id}`, payload)
+  },
+
+  async deleteEmployee(id: string): Promise<void> {
+    await api.delete(`/admin/employees/${id}`)
+  },
 }
