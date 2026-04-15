@@ -246,84 +246,99 @@ router.get('/employees', async (req, res, next) => {
 /**
  * POST /api/admin/employees
  * Tạo nhân viên mới + tự động tạo user account với mật khẩu mặc định: Welcome@2026
- * Body: { employeeId?, name, email, position?, phone? }
+ * Body: {
+ *   employeeId?, firstName, lastName, email,
+ *   phone?, dateOfBirth?, gender?,
+ *   department?, position?,
+ *   employmentType?, hireDate?, baseSalary?, currency?,
+ *   street?, city?, province?,
+ *   emergencyName?, emergencyPhone?, emergencyRelation?
+ * }
  */
 router.post('/employees', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
   try {
     const { tenantId, userId } = req.user;
-    const { employeeId, name, email, position, phone } = req.body;
+    const {
+      employeeId,
+      firstName,
+      lastName,
+      email,
+      password,
+      phone,
+      dateOfBirth,
+      gender,
+      department,
+      position,
+      employmentType,
+      hireDate,
+      baseSalary,
+      currency,
+      street,
+      city,
+      province,
+      emergencyName,
+      emergencyPhone,
+      emergencyRelation,
+    } = req.body;
+
     const db = getDatabase();
     const tenantObjectId = new ObjectId(tenantId);
 
     // Validate required fields
-    if (!name || !name.trim()) {
-      return res.status(400).json({ success: false, message: 'Employee name is required' });
+    if (!firstName?.trim() || !lastName?.trim()) {
+      return res.status(400).json({ success: false, message: 'Họ và tên là bắt buộc' });
     }
-
-    if (!email || !email.trim()) {
-      return res.status(400).json({ success: false, message: 'Employee email is required' });
+    if (!email?.trim()) {
+      return res.status(400).json({ success: false, message: 'Email là bắt buộc' });
     }
 
     const emailLower = email.trim().toLowerCase();
 
-    // Check duplicate email in employees
+    // Check duplicate email
     const existingEmployee = await db.collection('employees').findOne({
       tenantId: tenantObjectId,
       'personalInfo.email': emailLower,
     });
-
     if (existingEmployee) {
-      return res.status(400).json({ success: false, message: 'Email already exists in employees' });
+      return res.status(400).json({ success: false, message: 'Email đã tồn tại trong danh sách nhân viên' });
     }
-
-    // Check duplicate email in users
     const existingUser = await db.collection('users').findOne({
       tenantId: tenantObjectId,
       email: emailLower,
     });
-
     if (existingUser) {
-      return res.status(400).json({ success: false, message: 'Email already exists in users' });
+      return res.status(400).json({ success: false, message: 'Email đã tồn tại trong hệ thống' });
     }
 
     // Generate or validate employeeId
     let finalEmployeeId;
     if (employeeId && employeeId.trim()) {
       finalEmployeeId = employeeId.trim();
-      // Check duplicate employeeId
       const existingEmpId = await db.collection('employees').findOne({
         tenantId: tenantObjectId,
         employeeId: finalEmployeeId,
       });
-
       if (existingEmpId) {
-        return res.status(400).json({ success: false, message: 'Employee ID already exists' });
+        return res.status(400).json({ success: false, message: 'Mã nhân viên đã tồn tại' });
       }
     } else {
-      // Auto-generate employeeId like auth.js: EMP-001, EMP-002, ...
-      const employeeCount = await db.collection('employees').countDocuments({
-        tenantId: tenantObjectId,
-      });
+      const employeeCount = await db.collection('employees').countDocuments({ tenantId: tenantObjectId });
       finalEmployeeId = `EMP-${String(employeeCount + 1).padStart(3, '0')}`;
     }
 
     const now = new Date();
-    const defaultPassword = 'Welcome@2026';
+    const defaultPassword = password?.trim() || 'Welcome@2026';
     const hashedPassword = await hashPassword(defaultPassword);
 
     // 1. Tạo User Account
-    const nameParts = name.trim().split(' ');
-    const firstName = nameParts[0];
-    const lastName = nameParts.slice(1).join(' ');
-
     const userData = {
       tenantId: tenantObjectId,
       email: emailLower,
       password: hashedPassword,
       role: 'EMPLOYEE',
       profile: {
-        firstName,
-        lastName,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
         phone: phone?.trim() || null,
         avatar: null,
         employeeId: finalEmployeeId,
@@ -333,43 +348,50 @@ router.post('/employees', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), as
       createdAt: now,
       updatedAt: now,
     };
-
     const userResult = await db.collection('users').insertOne(userData);
     const newUserId = userResult.insertedId;
 
     // 2. Tạo Employee Record
     const newEmployee = {
       tenantId: tenantObjectId,
-      userId: newUserId,  // Link vào user account vừa tạo
+      userId: newUserId,
       employeeId: finalEmployeeId,
       personalInfo: {
-        firstName,
-        lastName,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
         email: emailLower,
         phone: phone?.trim() || '',
+        dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+        gender: gender || null,
         address: {
-          street: null,
-          city: null,
-          province: null
+          street: street?.trim() || null,
+          city: city?.trim() || null,
+          province: province?.trim() || null,
         },
-        emergencyContact: null
+        emergencyContact: (emergencyName || emergencyPhone)
+          ? {
+              name: emergencyName?.trim() || null,
+              phone: emergencyPhone?.trim() || null,
+              relationship: emergencyRelation?.trim() || null,
+            }
+          : null,
       },
       employment: {
         position: position?.trim() || '',
-        department: '',
-        employmentType: 'FULL_TIME',
-        hireDate: now,
+        department: department?.trim() || '',
+        employmentType: employmentType || 'FULL_TIME',
+        hireDate: hireDate ? new Date(hireDate) : now,
         terminationDate: null,
         status: 'ACTIVE',
-        baseSalary: null,
-        currency: 'VND'
+        baseSalary: baseSalary ? Number(baseSalary) : null,
+        currency: currency || 'VND',
       },
       qrCode: {
         code: `QR-TENANT-${finalEmployeeId}-${now.getFullYear()}`,
         qrImageUrl: null,
         generatedAt: now,
-        expiresAt: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000), // 1 year
-        isActive: true
+        expiresAt: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000),
+        isActive: true,
       },
       statistics: {
         totalWorkingDays: 0,
@@ -377,7 +399,7 @@ router.post('/employees', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), as
         lateCount: 0,
         absentCount: 0,
         overtimeHours: 0,
-        onTimeRate: 0
+        onTimeRate: 0,
       },
       createdBy: new ObjectId(userId),
       createdAt: now,

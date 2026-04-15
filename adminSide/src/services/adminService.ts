@@ -159,13 +159,28 @@ export const adminService = {
 
   async createEmployee(payload: {
     employeeId?: string
-    name: string
+    firstName: string
+    lastName: string
     email: string
-    position?: string
+    password?: string
     phone?: string
-  }): Promise<{ id: string }> {
-    const response = await api.post<{ id: string }>('/admin/employees', payload)
-    return response.data!
+    dateOfBirth?: string
+    gender?: string
+    department?: string
+    position?: string
+    employmentType?: string
+    hireDate?: string
+    baseSalary?: number
+    currency?: string
+    street?: string
+    city?: string
+    province?: string
+    emergencyName?: string
+    emergencyPhone?: string
+    emergencyRelation?: string
+  }): Promise<{ id: string; userId: string; employeeId: string; accountInfo: { email: string; defaultPassword: string } }> {
+    const response = await api.post<{ data: { id: string; userId: string; employeeId: string; accountInfo: { email: string; defaultPassword: string } } }>('/admin/employees', payload)
+    return response.data!.data!
   },
 
   async updateEmployee(id: string, payload: {

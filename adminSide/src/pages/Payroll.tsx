@@ -64,12 +64,12 @@ export default function Payroll() {
   const [filterMonth, setFilterMonth] = useState<number>(new Date().getMonth() + 1)
   const [filterYear, setFilterYear] = useState<number>(new Date().getFullYear())
   const [filterEmployee, setFilterEmployee] = useState<string>('')
+  const [filterEmployeeSearch, setFilterEmployeeSearch] = useState('')
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false)
   const [filterStatus, setFilterStatus] = useState<string>('')
 
   // Form state
   const [formEmployee, setFormEmployee] = useState('')
-  const [employeeSearch, setEmployeeSearch] = useState('')
-  const [showDropdown, setShowDropdown] = useState(false)
   const [formMonth, setFormMonth] = useState(new Date().getMonth() + 1)
   const [formYear, setFormYear] = useState(new Date().getFullYear())
   const [formBaseSalary, setFormBaseSalary] = useState('')
@@ -107,20 +107,21 @@ export default function Payroll() {
 
   const months = language === 'vi' ? MONTHS_VI : MONTHS_EN
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i)
-  const employeeDropdownRef = useRef<HTMLDivElement>(null)
   const autoCalcFiredRef = useRef(false) // tránh gọi 2 lần do strictMode
   const autoCalcKeyRef = useRef('') // track: "empId-month-year" để không gọi lại cùng combo
 
-  // Đóng dropdown khi click ra ngoài
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(e.target as Node)) {
-        setShowDropdown(false)
+      if (showFilterDropdown) {
+        const target = e.target as HTMLElement
+        if (!target.closest('[data-filter-employee-dropdown]')) {
+          setShowFilterDropdown(false)
+        }
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+  }, [showFilterDropdown])
 
   // Tự động tính khi đã chọn đủ: nhân viên + tháng + năm (chỉ ở mode create, không lặp)
   useEffect(() => {
@@ -175,6 +176,7 @@ export default function Payroll() {
       setPayrolls(data)
       setSelectedIds((prev) => prev.filter((id) => data.some((item) => item._id === id)))
       setBulkSelectedEmployees((prev) => prev.filter((emp) => data.some((item) => item.employeeId === emp.id)))
+      setShowFilterDropdown(false)
     } catch (err: any) {
       setError(err.message || 'Failed to load payrolls')
     } finally {
@@ -225,9 +227,9 @@ export default function Payroll() {
   }
 
   const resetForm = () => {
-    setEmployeeSearch('')
     setFormEmployee('')
-    setShowDropdown(false)
+    setFilterEmployeeSearch('')
+    setShowFilterDropdown(false)
     autoCalcFiredRef.current = false
     autoCalcKeyRef.current = ''
     setBulkCreating(false)
@@ -641,18 +643,65 @@ export default function Payroll() {
               </select>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 relative" data-filter-employee-dropdown>
               <label className="text-sm text-gray-600">{t('payroll.employee') || 'Nhân viên'}:</label>
-              <select
-                value={filterEmployee}
-                onChange={(e) => setFilterEmployee(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">-- {t('common.all') || 'Tất cả'} --</option>
-                {employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>{emp.name} — {emp.email} — {emp.code}</option>
-                ))}
-              </select>
+              <div className="relative w-72">
+                <input
+                  type="text"
+                  value={filterEmployeeSearch}
+                  onChange={(e) => {
+                    setFilterEmployeeSearch(e.target.value)
+                    setShowFilterDropdown(true)
+                  }}
+                  onFocus={() => setShowFilterDropdown(true)}
+                  placeholder="Tìm nhân viên..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {showFilterDropdown && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilterEmployee('')
+                        setFilterEmployeeSearch('')
+                        setShowFilterDropdown(false)
+                      }}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer ${
+                        filterEmployee === '' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600'
+                      }`}
+                    >
+                      — {t('common.all') || 'Tất cả'} —
+                    </button>
+                    {employees
+                      .filter((emp) => {
+                        const q = filterEmployeeSearch.toLowerCase().trim()
+                        if (!q) return true
+                        return (
+                          emp.name.toLowerCase().includes(q) ||
+                          emp.email.toLowerCase().includes(q) ||
+                          emp.code.toLowerCase().includes(q)
+                        )
+                      })
+                      .map((emp) => (
+                        <button
+                          key={emp.id}
+                          type="button"
+                          onClick={() => {
+                            setFilterEmployee(emp.id)
+                            setFilterEmployeeSearch(emp.name)
+                            setShowFilterDropdown(false)
+                          }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-0 ${
+                            filterEmployee === emp.id ? 'bg-blue-50' : ''
+                          }`}
+                        >
+                          <div className="font-medium text-gray-900">{emp.name}</div>
+                          <div className="text-xs text-gray-400">{emp.code} · {emp.email}</div>
+                        </button>
+                      ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
@@ -908,66 +957,22 @@ export default function Payroll() {
                   </div>
                 </>
               ) : (
-                <div className="relative" ref={employeeDropdownRef}>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     {t('payroll.employee')} *
                   </label>
-                  <input
-                    type="text"
-                    value={employeeSearch}
-                    onChange={e => {
-                      const val = e.target.value
-                      setEmployeeSearch(val)
-                      setShowDropdown(true)
-                      if (!val) {
-                        setFormEmployee('')
-                      }
-                    }}
-                    onFocus={() => setShowDropdown(true)}
-                    placeholder="Tìm tên nhân viên... (để trống = tất cả)"
+                  <select
+                    value={formEmployee}
+                    onChange={(e) => setFormEmployee(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  {showDropdown && (
-                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEmployeeSearch('')
-                          setFormEmployee('')
-                          setShowDropdown(false)
-                        }}
-                        className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer ${
-                          formEmployee === '' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600'
-                        }`}
-                      >
-                        — Tất cả nhân viên —
-                      </button>
-                      {employees
-                        .filter(emp =>
-                          !employeeSearch ||
-                          emp.name.toLowerCase().includes(employeeSearch.toLowerCase()) ||
-                          emp.email.toLowerCase().includes(employeeSearch.toLowerCase()) ||
-                          emp.code.toLowerCase().includes(employeeSearch.toLowerCase())
-                        )
-                        .map((emp) => (
-                          <button
-                            key={emp.id}
-                            type="button"
-                            onClick={() => {
-                              setEmployeeSearch(emp.name)
-                              setFormEmployee(emp.id)
-                              setShowDropdown(false)
-                            }}
-                            className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-0 ${
-                              formEmployee === emp.id ? 'bg-blue-50' : ''
-                            }`}
-                          >
-                            <div className="font-medium text-gray-900">{emp.name}</div>
-                            <div className="text-xs text-gray-400">{emp.code} · {emp.email}</div>
-                          </button>
-                        ))}
-                    </div>
-                  )}
+                  >
+                    <option value="">-- Chọn nhân viên --</option>
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.name} — {emp.code} — {emp.email}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
 
