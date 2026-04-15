@@ -99,6 +99,10 @@ const translations: Translations = {
     vi: 'Khen thưởng & Kỷ luật',
     en: 'Rewards & Discipline',
   },
+  'nav.employees': {
+    vi: 'Quản lý Nhân viên',
+    en: 'Employees',
+  },
   'nav.departments': {
     vi: 'Phòng ban',
     en: 'Departments',
@@ -718,6 +722,116 @@ const translations: Translations = {
   'departments.confirmDeleteDesc': {
     vi: 'Hành động này không thể hoàn tác.',
     en: 'This action cannot be undone.',
+  },
+
+  // Employees
+  'employees.title': {
+    vi: 'Quản lý Nhân viên',
+    en: 'Manage Employees',
+  },
+  'employees.totalEmployees': {
+    vi: 'Tổng nhân viên',
+    en: 'Total Employees',
+  },
+  'employees.assigned': {
+    vi: 'Đã phân phòng',
+    en: 'Assigned',
+  },
+  'employees.unassigned': {
+    vi: 'Chưa phân phòng',
+    en: 'Unassigned',
+  },
+  'employees.addEmployee': {
+    vi: 'Thêm Nhân viên',
+    en: 'Add Employee',
+  },
+  'employees.searchPlaceholder': {
+    vi: 'Tìm kiếm theo tên, email, ID nhân viên...',
+    en: 'Search by name, email, employee ID...',
+  },
+  'employees.allDepartments': {
+    vi: 'Tất cả phòng ban',
+    en: 'All Departments',
+  },
+  'employees.allStatus': {
+    vi: 'Tất cả trạng thái',
+    en: 'All Status',
+  },
+  'employees.statusAssigned': {
+    vi: 'Đã phân phòng',
+    en: 'Assigned',
+  },
+  'employees.statusUnassigned': {
+    vi: 'Chưa phân phòng',
+    en: 'Unassigned',
+  },
+  'employees.employeeId': {
+    vi: 'ID Nhân viên',
+    en: 'Employee ID',
+  },
+  'employees.name': {
+    vi: 'Tên',
+    en: 'Name',
+  },
+  'employees.email': {
+    vi: 'Email',
+    en: 'Email',
+  },
+  'employees.position': {
+    vi: 'Vị trí',
+    en: 'Position',
+  },
+  'employees.department': {
+    vi: 'Phòng ban',
+    en: 'Department',
+  },
+  'employees.actions': {
+    vi: 'Thao tác',
+    en: 'Actions',
+  },
+  'employees.assign': {
+    vi: 'Gán',
+    en: 'Assign',
+  },
+  'employees.move': {
+    vi: 'Chuyển',
+    en: 'Move',
+  },
+  'employees.removeDept': {
+    vi: 'Xóa phòng',
+    en: 'Remove Dept',
+  },
+  'employees.noResults': {
+    vi: 'Không tìm thấy nhân viên nào',
+    en: 'No employees found',
+  },
+  'employees.assignDeptTitle': {
+    vi: 'Gán phòng ban',
+    en: 'Assign Department',
+  },
+  'employees.moveDeptTitle': {
+    vi: 'Chuyển phòng ban',
+    en: 'Move to Department',
+  },
+  'employees.selectDept': {
+    vi: 'Chọn phòng ban *',
+    en: 'Select Department *',
+  },
+  'employees.selectDeptPlaceholder': {
+    vi: '-- Chọn phòng ban --',
+    en: '-- Select Department --',
+  },
+  'employees.currentDept': {
+    vi: 'Phòng ban hiện tại:',
+    en: 'Current Department:',
+  },
+  'employees.confirm': {
+    vi: 'Xác nhận',
+    en: 'Confirm',
+  },
+  'employees.notAssigned': {
+    vi: 'Chưa phân',
+    en: 'Not Assigned',
   },
 
   // Reports

@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react'
-import { t } from '../utils/i18n'
 import { adminService, type Employee } from '../services/adminService'
 import {
-  getDepartments,
+  assignEmployeesToDepartment,
   createDepartment,
-  updateDepartment,
   deleteDepartment,
   getDepartmentEmployees,
-  assignEmployeesToDepartment,
+  getDepartments,
   removeEmployeesFromDepartment,
+  updateDepartment,
   type Department,
   type DepartmentEmployee,
 } from '../services/departmentService'
+import { t } from '../utils/i18n'
 
 export default function Departments() {
   // ─── State: Department List ──────────────────────────────────────────────
@@ -38,6 +38,9 @@ export default function Departments() {
   const [selectedEmpIds, setSelectedEmpIds] = useState<Set<string>>(new Set())
   const [assigning, setAssigning] = useState(false)
 
+  // ─── State: Unassigned Modal ────────────────────────────────────────────
+  const [showUnassignedModal, setShowUnassignedModal] = useState(false)
+
   // ─── Load Departments + Employees ───────────────────────────────────────────
   useEffect(() => {
     Promise.all([
@@ -54,8 +57,9 @@ export default function Departments() {
       })
       const deptsWithCount = depts.map(d => ({ ...d, employeeCount: countMap[d.name] || 0 }))
       setDepartments(deptsWithCount)
-    }).catch((err: any) => {
-      setError(err.message || 'Failed to load')
+    }).catch((err: Error | unknown) => {
+      if (err instanceof Error) setError(err.message || 'Failed to load')
+      else setError('Failed to load')
     }).finally(() => setLoading(false))
   }, [])
 
@@ -70,11 +74,10 @@ export default function Departments() {
 
   // ─── Stats ───────────────────────────────────────────────────────────────
   const totalEmployees = allEmployees.length
-  // Count only employees whose department name matches an actual department in our collection
-  const deptNames = new Set(departments.map(d => d.name))
   const assignedEmployees = allEmployees.filter(
-    e => e.department && e.department !== 'N/A' && e.department.trim() !== '' && deptNames.has(e.department)
+    e => e.department && e.department !== 'N/A' && e.department.trim() !== ''
   ).length
+  const unassignedCount = totalEmployees - assignedEmployees
 
   // ─── Department CRUD ───────────────────────────────────────────────────
   const openCreateModal = () => {
@@ -106,8 +109,9 @@ export default function Departments() {
       setShowDeptModal(false)
       const depts = await getDepartments()
       setDepartments(depts)
-    } catch (err: any) {
-      alert(err.message || 'Lỗi khi lưu phòng ban')
+    } catch (err: Error | unknown) {
+      if (err instanceof Error) alert(err.message || 'Lỗi khi lưu phòng ban')
+      else alert('Lỗi khi lưu phòng ban')
     } finally {
       setSubmittingDept(false)
     }
@@ -120,8 +124,9 @@ export default function Departments() {
       await deleteDepartment(dept._id)
       const depts = await getDepartments()
       setDepartments(depts)
-    } catch (err: any) {
-      alert(err.message || t('departments.cannotDelete'))
+    } catch (err: Error | unknown) {
+      if (err instanceof Error) alert(err.message || t('departments.cannotDelete'))
+      else alert(t('departments.cannotDelete'))
     } finally {
       setDeletingDept(null)
     }
@@ -150,9 +155,18 @@ export default function Departments() {
     setSelectedEmpIds(new Set())
   }
 
-  // Unassigned employees: those NOT currently in the selected department
-  const otherEmployees = allEmployees.filter(
-    e => !selectedDept || e._id !== selectedDept._id
+  const closeUnassignedModal = () => {
+    setShowUnassignedModal(false)
+  }
+
+  // Employees available to assign to a department (not currently in this dept)
+  const availableEmployees = selectedDept
+    ? allEmployees.filter(e => !deptEmployees.some(de => de._id === e._id))
+    : []
+
+  // Employees without any department assignment (truly unassigned)
+  const unassignedEmployees = allEmployees.filter(
+    e => !e.department || e.department === 'N/A' || e.department.trim() === ''
   )
 
   const toggleEmpSelection = (id: string) => {
@@ -178,8 +192,8 @@ export default function Departments() {
       setDeptEmployees(data.employees)
       setAllEmployees(empData.employees || [])
       setSelectedEmpIds(new Set())
-    } catch (err: any) {
-      alert(err.message)
+    } catch (err: Error | unknown) {
+      if (err instanceof Error) alert(err.message)
     } finally {
       setAssigning(false)
     }
@@ -198,8 +212,8 @@ export default function Departments() {
       setDepartments(depts)
       setDeptEmployees(data.employees)
       setAllEmployees(empData.employees || [])
-    } catch (err: any) {
-      alert(err.message)
+    } catch (err: Error | unknown) {
+      if (err instanceof Error) alert(err.message)
     } finally {
       setAssigning(false)
     }
@@ -255,9 +269,13 @@ export default function Departments() {
           { label: t('departments.totalDepartments'), value: departments.length, color: 'text-gray-900' },
           { label: t('departments.totalEmployees'), value: totalEmployees, color: 'text-blue-600' },
           { label: 'Đã phân phòng', value: assignedEmployees, color: 'text-green-600' },
-          { label: t('departments.unassigned'), value: totalEmployees - assignedEmployees, color: 'text-orange-600' },
+          { label: t('departments.unassigned'), value: unassignedCount, color: 'text-orange-600', clickable: true },
         ].map(s => (
-          <div key={s.label} className="bg-white rounded-lg border border-gray-200 p-4">
+          <div
+            key={s.label}
+            onClick={() => s.clickable && setShowUnassignedModal(true)}
+            className={`bg-white rounded-lg border border-gray-200 p-4 ${'clickable' in s && s.clickable ? 'cursor-pointer hover:border-orange-300 hover:shadow-md transition-all' : ''}`}
+          >
             <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
             <p className="text-sm text-gray-500 mt-1">{s.label}</p>
           </div>
@@ -425,13 +443,13 @@ export default function Departments() {
               {/* Other employees */}
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 mb-3">
-                  Nhân viên khác ({otherEmployees.length})
+                  Nhân viên khả thi ({availableEmployees.length})
                 </h3>
-                {otherEmployees.length === 0 ? (
-                  <p className="text-sm text-gray-400 italic">Không còn nhân viên nào.</p>
+                {availableEmployees.length === 0 ? (
+                  <p className="text-sm text-gray-400 italic">Không còn nhân viên nào khả thi.</p>
                 ) : (
                   <div className="max-h-60 overflow-y-auto space-y-2">
-                    {otherEmployees.map(emp => (
+                    {availableEmployees.map(emp => (
                       <div key={emp._id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
                         <input
                           type="checkbox"
@@ -466,6 +484,59 @@ export default function Departments() {
                 {assigning
                   ? 'Đang gán...'
                   : `${t('departments.assignEmployees')} (${selectedEmpIds.size})`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── UNASSIGNED EMPLOYEES MODAL ─────────────────────────────── */}
+      {showUnassignedModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-200 flex-shrink-0">
+              <h2 className="text-xl font-bold text-gray-900">Nhân viên chưa phân phòng</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                {unassignedEmployees.length} nhân viên cần được gán vào phòng ban
+              </p>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {unassignedEmployees.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <div className="text-3xl mb-2">✨</div>
+                  <p className="text-base font-medium text-gray-900">Tuyệt vời!</p>
+                  <p className="text-sm text-gray-500 mt-1">Tất cả nhân viên đều đã được phân phòng.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3">
+                  {unassignedEmployees.map(emp => (
+                    <div key={emp._id} className="flex items-center justify-between p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-gray-900">{emp.name}</p>
+                        <p className="text-xs text-gray-500 mt-1">{emp.email}</p>
+                        <p className="text-xs text-gray-500">{emp.position}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs font-medium text-yellow-700 bg-yellow-100 px-2.5 py-1 rounded-full">
+                          Chưa phân phòng
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-gray-200 flex-shrink-0">
+              <button
+                onClick={closeUnassignedModal}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors cursor-pointer"
+              >
+                {t('common.close') || 'Đóng'}
               </button>
             </div>
           </div>
