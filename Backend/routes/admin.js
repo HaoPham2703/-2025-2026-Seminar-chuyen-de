@@ -1,8 +1,9 @@
 import express from 'express';
 import { ObjectId } from 'mongodb';
+import { DISCIPLINE_STATUS, DISCIPLINE_TYPE, REWARD_STATUS, REWARD_TYPE, ROLES } from '../config/constants.js';
 import { getDatabase } from '../config/database.js';
-import { authenticateToken, tenantIsolation, requireRole } from '../middleware/auth.js';
-import { ROLES, REWARD_TYPE, REWARD_STATUS, DISCIPLINE_TYPE, DISCIPLINE_STATUS } from '../config/constants.js';
+import { authenticateToken, requireRole, tenantIsolation } from '../middleware/auth.js';
+import { hashPassword } from '../utils/password.js';
 
 const router = express.Router();
 
@@ -237,6 +238,270 @@ router.get('/employees', async (req, res, next) => {
         total: formattedEmployees.length
       }
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/admin/employees
+ * Tạo nhân viên mới + tự động tạo user account với mật khẩu mặc định: Welcome@2026
+ * Body: { employeeId?, name, email, position?, phone? }
+ */
+router.post('/employees', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId, userId } = req.user;
+    const { employeeId, name, email, position, phone } = req.body;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    // Validate required fields
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Employee name is required' });
+    }
+
+    if (!email || !email.trim()) {
+      return res.status(400).json({ success: false, message: 'Employee email is required' });
+    }
+
+    const emailLower = email.trim().toLowerCase();
+
+    // Check duplicate email in employees
+    const existingEmployee = await db.collection('employees').findOne({
+      tenantId: tenantObjectId,
+      'personalInfo.email': emailLower,
+    });
+
+    if (existingEmployee) {
+      return res.status(400).json({ success: false, message: 'Email already exists in employees' });
+    }
+
+    // Check duplicate email in users
+    const existingUser = await db.collection('users').findOne({
+      tenantId: tenantObjectId,
+      email: emailLower,
+    });
+
+    if (existingUser) {
+      return res.status(400).json({ success: false, message: 'Email already exists in users' });
+    }
+
+    // Generate or validate employeeId
+    let finalEmployeeId;
+    if (employeeId && employeeId.trim()) {
+      finalEmployeeId = employeeId.trim();
+      // Check duplicate employeeId
+      const existingEmpId = await db.collection('employees').findOne({
+        tenantId: tenantObjectId,
+        employeeId: finalEmployeeId,
+      });
+
+      if (existingEmpId) {
+        return res.status(400).json({ success: false, message: 'Employee ID already exists' });
+      }
+    } else {
+      // Auto-generate employeeId like auth.js: EMP-001, EMP-002, ...
+      const employeeCount = await db.collection('employees').countDocuments({
+        tenantId: tenantObjectId,
+      });
+      finalEmployeeId = `EMP-${String(employeeCount + 1).padStart(3, '0')}`;
+    }
+
+    const now = new Date();
+    const defaultPassword = 'Welcome@2026';
+    const hashedPassword = await hashPassword(defaultPassword);
+
+    // 1. Tạo User Account
+    const nameParts = name.trim().split(' ');
+    const firstName = nameParts[0];
+    const lastName = nameParts.slice(1).join(' ');
+
+    const userData = {
+      tenantId: tenantObjectId,
+      email: emailLower,
+      password: hashedPassword,
+      role: 'EMPLOYEE',
+      profile: {
+        firstName,
+        lastName,
+        phone: phone?.trim() || null,
+        avatar: null,
+        employeeId: finalEmployeeId,
+      },
+      isActive: true,
+      lastLogin: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const userResult = await db.collection('users').insertOne(userData);
+    const newUserId = userResult.insertedId;
+
+    // 2. Tạo Employee Record
+    const newEmployee = {
+      tenantId: tenantObjectId,
+      userId: newUserId,  // Link vào user account vừa tạo
+      employeeId: finalEmployeeId,
+      personalInfo: {
+        firstName,
+        lastName,
+        email: emailLower,
+        phone: phone?.trim() || '',
+        address: {
+          street: null,
+          city: null,
+          province: null
+        },
+        emergencyContact: null
+      },
+      employment: {
+        position: position?.trim() || '',
+        department: '',
+        employmentType: 'FULL_TIME',
+        hireDate: now,
+        terminationDate: null,
+        status: 'ACTIVE',
+        baseSalary: null,
+        currency: 'VND'
+      },
+      qrCode: {
+        code: `QR-TENANT-${finalEmployeeId}-${now.getFullYear()}`,
+        qrImageUrl: null,
+        generatedAt: now,
+        expiresAt: new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000), // 1 year
+        isActive: true
+      },
+      statistics: {
+        totalWorkingDays: 0,
+        totalHours: 0,
+        lateCount: 0,
+        absentCount: 0,
+        overtimeHours: 0,
+        onTimeRate: 0
+      },
+      createdBy: new ObjectId(userId),
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const empResult = await db.collection('employees').insertOne(newEmployee);
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: empResult.insertedId.toString(),
+        userId: newUserId.toString(),
+        employeeId: finalEmployeeId,
+        accountInfo: {
+          email: emailLower,
+          defaultPassword: defaultPassword,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/admin/employees/:id
+ * Cập nhật thông tin nhân viên
+ * Body: { name?, email?, position?, phone? }
+ */
+router.put('/employees/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { id } = req.params;
+    const { name, email, position, phone } = req.body;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    // Check if at least one field is provided
+    if (!name && !email && !position && !phone) {
+      return res.status(400).json({ success: false, message: 'At least one field is required' });
+    }
+
+    const employee = await db.collection('employees').findOne({
+      _id: new ObjectId(id),
+      tenantId: tenantObjectId,
+    });
+
+    if (!employee) {
+      return res.status(404).json({ success: false, message: 'Employee not found' });
+    }
+
+    // Check duplicate email (exclude self)
+    if (email && email.trim()) {
+      const existingEmail = await db.collection('employees').findOne({
+        tenantId: tenantObjectId,
+        'personalInfo.email': email.trim().toLowerCase(),
+        _id: { $ne: new ObjectId(id) },
+      });
+
+      if (existingEmail) {
+        return res.status(400).json({ success: false, message: 'Email already exists' });
+      }
+    }
+
+    const update = {
+      updatedAt: new Date(),
+    };
+
+    if (name && name.trim()) {
+      const nameParts = name.trim().split(' ');
+      update['personalInfo.firstName'] = nameParts[0];
+      update['personalInfo.lastName'] = nameParts.slice(1).join(' ');
+    }
+
+    if (email && email.trim()) {
+      update['personalInfo.email'] = email.trim().toLowerCase();
+    }
+
+    if (position !== undefined) {
+      update['position'] = position?.trim() || '';
+      update['employment.position'] = position?.trim() || '';
+    }
+
+    if (phone !== undefined) {
+      update['personalInfo.phone'] = phone?.trim() || '';
+    }
+
+    await db.collection('employees').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: update }
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/admin/employees/:id
+ * Xóa nhân viên
+ */
+router.delete('/employees/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { id } = req.params;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const employee = await db.collection('employees').findOne({
+      _id: new ObjectId(id),
+      tenantId: tenantObjectId,
+    });
+
+    if (!employee) {
+      return res.status(404).json({ success: false, message: 'Employee not found' });
+    }
+
+    await db.collection('employees').deleteOne({
+      _id: new ObjectId(id),
+    });
+
+    res.json({ success: true });
   } catch (error) {
     next(error);
   }
