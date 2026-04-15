@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { t } from '../utils/i18n'
 import { useLanguage } from '../contexts/LanguageContext'
 import { adminService, type Employee } from '../services/adminService'
@@ -36,8 +36,23 @@ export default function Rewards() {
   const [filterMonth, setFilterMonth] = useState(new Date().getMonth() + 1)
   const [filterYear, setFilterYear] = useState(new Date().getFullYear())
   const [filterEmployee, setFilterEmployee] = useState('')
+  const [employeeSearch, setEmployeeSearch] = useState('')
+  const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false)
   const months = language === 'vi' ? MONTHS_VI : MONTHS_EN
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i)
+  const employeeDropdownRef = useRef<HTMLDivElement>(null)
+
+  const filteredEmployees = useMemo(() => {
+    const q = employeeSearch.trim().toLowerCase()
+    if (!q) return employees
+    return employees.filter((emp) =>
+      emp.name.toLowerCase().includes(q) ||
+      emp.email.toLowerCase().includes(q) ||
+      emp.employeeId.toLowerCase().includes(q) ||
+      emp.department.toLowerCase().includes(q) ||
+      emp.position.toLowerCase().includes(q)
+    )
+  }, [employees, employeeSearch])
 
   // ─── Rewards State ─────────────────────────────────────────────────────────
   const [rewards, setRewards] = useState<Reward[]>([])
@@ -84,6 +99,16 @@ export default function Rewards() {
   // ─── Load Employees ────────────────────────────────────────────────────────
   useEffect(() => {
     adminService.getAllEmployees().then(d => setEmployees(d.employees || [])).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (employeeDropdownRef.current && !employeeDropdownRef.current.contains(e.target as Node)) {
+        setShowEmployeeDropdown(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   // ─── Load Rewards ─────────────────────────────────────────────────────────
@@ -276,7 +301,10 @@ export default function Rewards() {
 
   // ─── Reset Forms ──────────────────────────────────────────────────────────
   const resetRewardForm = () => {
-    setREmployee(''); setRType('MATERIAL'); setRTitle(''); setRDesc(''); setRAmount(''); setRItem('')
+    setREmployee('')
+    setEmployeeSearch('')
+    setShowEmployeeDropdown(false)
+    setRType('MATERIAL'); setRTitle(''); setRDesc(''); setRAmount(''); setRItem('')
   }
 
   const resetDisciplineForm = () => {
@@ -646,13 +674,55 @@ export default function Rewards() {
               <p className="text-sm text-gray-500 mt-1">{MONTHS_VI[filterMonth - 1]}/{filterYear}</p>
             </div>
             <form onSubmit={handleCreateReward} className="p-6 space-y-4">
-              <div>
+              <div className="relative" ref={employeeDropdownRef}>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{t('attendance.employee')} *</label>
-                <select value={rEmployee} onChange={e => setREmployee(e.target.value)} required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">-- {t('common.select')} --</option>
-                  {employees.map(emp => <option key={emp._id} value={emp._id}>{emp.name}</option>)}
-                </select>
+                <input
+                  type="text"
+                  value={employeeSearch}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setEmployeeSearch(val)
+                    setShowEmployeeDropdown(true)
+                    if (!val) setREmployee('')
+                  }}
+                  onFocus={() => setShowEmployeeDropdown(true)}
+                  placeholder="Tìm tên / email / mã nhân viên..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {showEmployeeDropdown && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmployeeSearch('')
+                        setREmployee('')
+                        setShowEmployeeDropdown(false)
+                      }}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer ${
+                        rEmployee === '' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600'
+                      }`}
+                    >
+                      — {t('common.select')} —
+                    </button>
+                    {filteredEmployees.map((emp) => (
+                      <button
+                        key={emp._id}
+                        type="button"
+                        onClick={() => {
+                          setEmployeeSearch(`${emp.name} · ${emp.employeeId}`)
+                          setREmployee(emp._id)
+                          setShowEmployeeDropdown(false)
+                        }}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-0 ${
+                          rEmployee === emp._id ? 'bg-blue-50' : ''
+                        }`}
+                      >
+                        <div className="font-medium text-gray-900">{emp.name}</div>
+                        <div className="text-xs text-gray-400">{emp.employeeId} · {emp.department} · {emp.email}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{t('rewards.type')}</label>
@@ -714,13 +784,55 @@ export default function Rewards() {
               <p className="text-sm text-gray-500 mt-1">{MONTHS_VI[filterMonth - 1]}/{filterYear}</p>
             </div>
             <form onSubmit={handleCreateDiscipline} className="p-6 space-y-4">
-              <div>
+              <div className="relative" ref={employeeDropdownRef}>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{t('attendance.employee')} *</label>
-                <select value={dEmployee} onChange={e => setDEmployee(e.target.value)} required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">-- {t('common.select')} --</option>
-                  {employees.map(emp => <option key={emp._id} value={emp._id}>{emp.name}</option>)}
-                </select>
+                <input
+                  type="text"
+                  value={employeeSearch}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setEmployeeSearch(val)
+                    setShowEmployeeDropdown(true)
+                    if (!val) setDEmployee('')
+                  }}
+                  onFocus={() => setShowEmployeeDropdown(true)}
+                  placeholder="Tìm tên / email / mã nhân viên..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {showEmployeeDropdown && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmployeeSearch('')
+                        setDEmployee('')
+                        setShowEmployeeDropdown(false)
+                      }}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer ${
+                        dEmployee === '' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600'
+                      }`}
+                    >
+                      — {t('common.select')} —
+                    </button>
+                    {filteredEmployees.map((emp) => (
+                      <button
+                        key={emp._id}
+                        type="button"
+                        onClick={() => {
+                          setEmployeeSearch(`${emp.name} · ${emp.employeeId}`)
+                          setDEmployee(emp._id)
+                          setShowEmployeeDropdown(false)
+                        }}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-gray-100 last:border-0 ${
+                          dEmployee === emp._id ? 'bg-blue-50' : ''
+                        }`}
+                      >
+                        <div className="font-medium text-gray-900">{emp.name}</div>
+                        <div className="text-xs text-gray-400">{emp.employeeId} · {emp.department} · {emp.email}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{t('rewards.disciplineType')}</label>

@@ -96,6 +96,11 @@ export interface DisciplineBreakdown {
   amount: number
 }
 
+export interface RewardBreakdown {
+  approved: { title: string; type: string; amount: number; itemName: string | null }[]
+  pending: { title: string; type: string; amount: number; itemName: string | null }[]
+}
+
 export interface AutoCalcPayrollResponse {
   baseSalary: number
   attendanceSummary: {
@@ -109,6 +114,7 @@ export interface AutoCalcPayrollResponse {
   lateIncidents: LateIncident[]
   absentIncidents: AbsentIncident[]
   disciplineBreakdown: DisciplineBreakdown[]
+  rewardBreakdown: RewardBreakdown
   suggestion: {
     allowances: PayrollItem[]
     deductions: PayrollItem[]
@@ -167,7 +173,7 @@ export async function createPayroll(data: CreatePayrollRequest): Promise<string>
   if (response.success && response.data) {
     return response.data.id
   }
-  throw new Error(response.message || 'Failed to create payroll')
+  throw new Error(response.message || response.message || 'Mỗi nhân viên chỉ được có 1 bảng lương trong cùng một tháng')
 }
 
 export async function updatePayroll(id: string, data: UpdatePayrollRequest): Promise<void> {
@@ -191,4 +197,18 @@ export async function autoCalculatePayroll(data: AutoCalcPayrollRequest): Promis
     return response.data
   }
   throw new Error(response.message || 'Failed to auto calculate payroll')
+}
+
+export async function deletePayroll(id: string): Promise<void> {
+  const response = await api.delete<null>(`/payrolls/${id}`)
+  if (!response.success) {
+    throw new Error(response.message || 'Failed to delete payroll')
+  }
+}
+
+export async function deletePayrolls(ids: string[]): Promise<void> {
+  const response = await api.delete<null>('/payrolls/bulk-delete', { ids })
+  if (!response.success) {
+    throw new Error(response.message || 'Failed to delete payrolls')
+  }
 }

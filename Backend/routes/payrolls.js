@@ -263,7 +263,7 @@ router.post('/auto-calculate', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN
         employeeId: employeeObjectId,
         month: monthNum,
         year: yearNum,
-        status: 'APPROVED',
+        status: { $in: ['APPROVED', 'PENDING'] },
       }).toArray(),
     ]);
 
@@ -314,12 +314,30 @@ router.post('/auto-calculate', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN
         amount: Number(d.amount) || 0,
       }));
 
-    // Reward from rewards collection (APPROVED only)
+    // Reward from rewards collection — APPROVED = cộng vào lương, PENDING = chỉ hiển thị
+    // Cả MONEY (amount) lẫn MATERIAL (itemName) đều tính
+    const approvedRewardRows = rewardRows.filter(r => r.status === 'APPROVED')
+    const pendingRewardRows = rewardRows.filter(r => r.status === 'PENDING')
+
     const rewardAmount = roundMoney(
-      rewardRows
-        .filter(r => r.amount != null)
-        .reduce((sum, r) => sum + Number(r.amount), 0)
-    );
+      approvedRewardRows
+        .reduce((sum, r) => sum + Number(r.amount || 0), 0)
+    )
+
+    const rewardBreakdown = {
+      approved: approvedRewardRows.map(r => ({
+        title: r.title,
+        type: r.type,
+        amount: Number(r.amount || 0),
+        itemName: r.itemName || null,
+      })),
+      pending: pendingRewardRows.map(r => ({
+        title: r.title,
+        type: r.type,
+        amount: Number(r.amount || 0),
+        itemName: r.itemName || null,
+      })),
+    };
 
     const bhxh = roundMoney(monthlyBaseSalary * effectiveFormula.bhxhRate);
     const pit = roundMoney(monthlyBaseSalary * effectiveFormula.pitRate);
@@ -356,6 +374,7 @@ router.post('/auto-calculate', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN
         lateIncidents,
         absentIncidents,
         disciplineBreakdown,
+        rewardBreakdown,
         suggestion: {
           allowances,
           deductions,
@@ -421,6 +440,24 @@ router.post('/', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req,
       });
     }
 
+    const payrollCollection = db.collection('payrolls');
+    const periodMonth = parseInt(period.month, 10);
+    const periodYear = parseInt(period.year, 10);
+    const existingPayroll = await payrollCollection.findOne({
+      tenantId: tenantObjectId,
+      employeeId: employeeObjectId,
+      'period.month': periodMonth,
+      'period.year': periodYear,
+      isSuperseded: { $ne: true },
+    });
+
+    if (existingPayroll) {
+      return res.status(409).json({
+        success: false,
+        message: 'Mỗi nhân viên chỉ được có 1 bảng lương trong cùng một tháng',
+      });
+    }
+
     const base = normalizeMoney(baseSalary);
     const allowancesTotal = sumAmount(allowances);
     const deductionsTotal = sumAmount(deductions);
@@ -431,8 +468,8 @@ router.post('/', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req,
       tenantId: tenantObjectId,
       employeeId: employeeObjectId,
       period: {
-        month: parseInt(period.month, 10),
-        year: parseInt(period.year, 10),
+        month: periodMonth,
+        year: periodYear,
       },
       baseSalary: base,
       allowances,
@@ -455,7 +492,7 @@ router.post('/', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req,
       updatedBy: new ObjectId(userId),
     };
 
-    const result = await db.collection('payrolls').insertOne(doc);
+    const result = await payrollCollection.insertOne(doc);
 
     await db.collection('payroll_audits').insertOne({
       tenantId: tenantObjectId,
@@ -648,39 +685,22 @@ router.post('/:id/revise', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), a
 
     const now = new Date();
 
-    const newDoc = {
-      tenantId: tenantObjectId,
-      employeeId: payroll.employeeId,
-      period: nextPeriod,
-      baseSalary: nextBase,
-      allowances: nextAllowances,
-      deductions: nextDeductions,
-      allowancesTotal,
-      deductionsTotal,
-      netSalary,
-      status,
-      approvedAt: approvedAt ? new Date(approvedAt) : now,
-      createdAt: now,
-      createdBy: new ObjectId(userId),
-      revisionOf: payroll.revisionOf || payroll._id,
-      revisedFrom: payroll._id,
-      revisedAt: now,
-      revisedBy: new ObjectId(userId),
-      reviseReason: String(reason).trim(),
-      isSuperseded: false,
-      supersededBy: null,
-      updatedAt: now,
-      updatedBy: new ObjectId(userId),
-    };
-
-    const insertResult = await db.collection('payrolls').insertOne(newDoc);
-
     await db.collection('payrolls').updateOne(
       { _id: payroll._id, tenantId: tenantObjectId },
       {
         $set: {
-          isSuperseded: true,
-          supersededBy: insertResult.insertedId,
+          period: nextPeriod,
+          baseSalary: nextBase,
+          allowances: nextAllowances,
+          deductions: nextDeductions,
+          allowancesTotal,
+          deductionsTotal,
+          netSalary,
+          status,
+          approvedAt: approvedAt ? new Date(approvedAt) : now,
+          revisedAt: now,
+          revisedBy: new ObjectId(userId),
+          reviseReason: String(reason).trim(),
           updatedAt: now,
           updatedBy: new ObjectId(userId),
         },
@@ -690,7 +710,7 @@ router.post('/:id/revise', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), a
     await db.collection('payroll_audits').insertOne({
       tenantId: tenantObjectId,
       payrollId: payroll._id,
-      action: 'REVISE_SOURCE',
+      action: 'REVISE',
       performedBy: new ObjectId(userId),
       performedAt: now,
       reason: String(reason).trim(),
@@ -702,21 +722,6 @@ router.post('/:id/revise', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), a
         status: payroll.status,
       },
       nextValues: {
-        supersededBy: insertResult.insertedId,
-      },
-    });
-
-    await db.collection('payroll_audits').insertOne({
-      tenantId: tenantObjectId,
-      payrollId: insertResult.insertedId,
-      action: 'REVISE_CREATE',
-      performedBy: new ObjectId(userId),
-      performedAt: now,
-      reason: String(reason).trim(),
-      previousValues: {
-        revisedFrom: payroll._id,
-      },
-      nextValues: {
         period: nextPeriod,
         baseSalary: nextBase,
         allowances: nextAllowances,
@@ -725,13 +730,39 @@ router.post('/:id/revise', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), a
       },
     });
 
-    res.status(201).json({
+    res.json({
       success: true,
       data: {
-        id: insertResult.insertedId.toString(),
+        id: payroll._id.toString(),
       },
       message: 'Payroll revised successfully',
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/payrolls/bulk-delete
+ * Xoá hàng loạt phiếu lương (admin)
+ */
+router.delete('/bulk-delete', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { ids = [] } = req.body || {};
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, message: 'ids is required' });
+    }
+
+    const payrollIds = ids.filter(Boolean).map((id) => new ObjectId(id));
+    const db = getDatabase();
+    const result = await db.collection('payrolls').deleteMany({
+      tenantId: new ObjectId(tenantId),
+      _id: { $in: payrollIds },
+    });
+
+    res.json({ success: true, data: { deletedCount: result.deletedCount || 0 } });
   } catch (error) {
     next(error);
   }
