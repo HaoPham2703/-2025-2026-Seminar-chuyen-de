@@ -1,6 +1,7 @@
 import {
   Award,
   Bell,
+  Briefcase,
   Building2,
   Calendar,
   ClipboardList,
@@ -9,7 +10,6 @@ import {
   FileText,
   HelpCircle,
   LayoutDashboard,
-  Plug,
   Settings,
   Users
 } from 'lucide-react'
@@ -47,6 +47,7 @@ const menuItems = [
   { path: '/rewards', icon: Award, labelKey: 'rewards.title' },
   { path: '/employees', icon: Users, labelKey: 'nav.employees' },
   { path: '/departments', icon: Building2, labelKey: 'nav.departments' },
+  { path: '/positions', icon: Briefcase, labelKey: 'nav.positions' },
   // { path: '/integrations', icon: Plug, labelKey: 'nav.integrations' },
   { path: '/reports', icon: FileText, labelKey: 'nav.reports' },
 ]

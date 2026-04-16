@@ -12,6 +12,7 @@ import LeaveRequests from './pages/LeaveRequests'
 import Login from './pages/Login'
 import Notifications from './pages/Notifications'
 import Payroll from './pages/Payroll'
+import Positions from './pages/Positions'
 import Reports from './pages/Reports'
 import Rewards from './pages/Rewards'
 import Schedule from './pages/Schedule'
@@ -40,6 +41,7 @@ function App() {
                   <Route path="/rewards" element={<Rewards />} />
                   <Route path="/employees" element={<Employees />} />
                   <Route path="/departments" element={<Departments />} />
+                  <Route path="/positions" element={<Positions />} />
                   <Route path="/integrations" element={<Integrations />} />
                   <Route path="/reports" element={<Reports />} />
                   <Route path="/settings" element={<Settings />} />

@@ -1,7 +1,7 @@
+import { Check, Edit, Eye, Trash2, User, UserPlus, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { adminService, type Employee } from '../services/adminService'
-import { t } from '../utils/i18n'
-import { UserPlus, Eye, Edit, Trash2, X, Check, User } from 'lucide-react'
+import { getPositionsByDepartment } from '../services/positionService'
 
 const EMPLOYMENT_TYPES = [
   { value: 'FULL_TIME', labelVi: 'Toàn thời gian', labelEn: 'Full-time' },
@@ -17,6 +17,17 @@ const GENDERS = [
   { value: 'OTHER', labelVi: 'Khác', labelEn: 'Other' },
 ]
 
+interface Position {
+  _id: string
+  name: string
+  baseSalary: number
+}
+
+interface Department {
+  _id: string
+  name: string
+}
+
 interface CreateFormData {
   employeeId: string
   firstName: string
@@ -27,7 +38,9 @@ interface CreateFormData {
   dateOfBirth: string
   gender: string
   department: string
+  departmentId: string
   position: string
+  positionId: string
   employmentType: string
   hireDate: string
   baseSalary: string
@@ -49,7 +62,9 @@ const emptyForm = (): CreateFormData => ({
   dateOfBirth: '',
   gender: '',
   department: '',
+  departmentId: '',
   position: '',
+  positionId: '',
   employmentType: 'FULL_TIME',
   hireDate: new Date().toISOString().split('T')[0],
   baseSalary: '',
@@ -64,6 +79,8 @@ const emptyForm = (): CreateFormData => ({
 export default function Employees() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [departments, setDepartments] = useState<string[]>([])
+  const [departmentObjects, setDepartmentObjects] = useState<Department[]>([])
+  const [positions, setPositions] = useState<Position[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
@@ -95,7 +112,9 @@ export default function Employees() {
         adminService.getAllDepartments(),
       ])
       setEmployees(empData.employees || [])
-      setDepartments(deptData.departments?.map((d: any) => d.name) || [])
+      const depts: Department[] = deptData.departments || []
+      setDepartmentObjects(depts)
+      setDepartments(depts.map((d: Department) => d.name) || [])
     } catch (err: Error | unknown) {
       setError(err instanceof Error ? err.message : 'Lỗi tải dữ liệu')
     } finally {
@@ -112,6 +131,45 @@ export default function Employees() {
   // ─── Form helpers ────────────────────────────────────────────────────
   const setField = (field: keyof CreateFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }))
+  }
+
+  const handleDepartmentChange = async (deptName: string) => {
+    setField('department', deptName)
+    setField('departmentId', '')
+    setField('position', '')
+    setField('positionId', '')
+    setField('baseSalary', '')
+    setPositions([])
+
+    if (!deptName) return
+
+    try {
+      const dept = departmentObjects.find((d: Department) => d.name === deptName)
+      if (!dept) return
+
+      setField('departmentId', dept._id)
+
+      const deptPositions = await getPositionsByDepartment(dept._id)
+      setPositions(deptPositions as Position[])
+    } catch (err) {
+      console.error('Failed to load positions:', err)
+    }
+  }
+
+  const handlePositionChange = (positionId: string) => {
+    setField('positionId', positionId)
+
+    if (!positionId) {
+      setField('position', '')
+      setField('baseSalary', '')
+      return
+    }
+
+    const selectedPos = positions.find(p => p._id === positionId)
+    if (selectedPos) {
+      setField('position', selectedPos.name)
+      setField('baseSalary', selectedPos.baseSalary.toString())
+    }
   }
 
   const openCreate = () => {
@@ -140,7 +198,9 @@ export default function Employees() {
       dateOfBirth: '',
       gender: '',
       department: emp.department || '',
+      departmentId: '',
       position: emp.position || '',
+      positionId: '',
       employmentType: 'FULL_TIME',
       hireDate: new Date().toISOString().split('T')[0],
       baseSalary: '',
@@ -219,8 +279,8 @@ export default function Employees() {
       }
 
       await loadData()
-    } catch (err: any) {
-      setFormError(err.message || 'Lỗi khi lưu nhân viên')
+    } catch (err: Error | unknown) {
+      setFormError(err instanceof Error ? err.message : 'Lỗi khi lưu nhân viên')
     } finally {
       setFormLoading(false)
     }
@@ -232,8 +292,8 @@ export default function Employees() {
       setDeletingEmployeeId(emp._id)
       await adminService.deleteEmployee(emp._id)
       await loadData()
-    } catch (err: any) {
-      alert(err.message || 'Lỗi khi xóa nhân viên')
+    } catch (err: Error | unknown) {
+      alert(err instanceof Error ? err.message : 'Lỗi khi xóa nhân viên')
     } finally {
       setDeletingEmployeeId(null)
     }
@@ -551,23 +611,34 @@ export default function Employees() {
                         className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-400 cursor-not-allowed" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Chức vụ</label>
-                      <input type="text" value={formData.position} onChange={e => setField('position', e.target.value)}
-                        placeholder="VD: Kỹ sư, Trưởng phòng..."
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 mt-3">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Phòng ban</label>
-                      <select value={formData.department} onChange={e => setField('department', e.target.value)}
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Phòng ban <span className="text-red-500">*</span></label>
+                      <select value={formData.department} onChange={e => handleDepartmentChange(e.target.value)}
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
                         <option value="">— Chọn phòng ban —</option>
                         {departments.map(d => (
                           <option key={d} value={d}>{d}</option>
                         ))}
                       </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mt-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Chức vụ <span className="text-red-500">*</span></label>
+                      <select value={formData.positionId} onChange={e => handlePositionChange(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                        disabled={!formData.department || positions.length === 0}>
+                        <option value="">— Chọn chức vụ —</option>
+                        {positions.map(p => (
+                          <option key={p._id} value={p._id}>{p.name}</option>
+                        ))}
+                      </select>
+                      {!formData.department && (
+                        <p className="text-xs text-gray-400 mt-1">Chọn phòng ban trước</p>
+                      )}
+                      {formData.department && positions.length === 0 && (
+                        <p className="text-xs text-orange-500 mt-1">Phòng ban này chưa có chức vụ nào</p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Loại hợp đồng</label>
@@ -587,10 +658,20 @@ export default function Employees() {
                         className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Lương cơ bản (VNĐ)</label>
-                      <input type="number" value={formData.baseSalary} onChange={e => setField('baseSalary', e.target.value)}
-                        placeholder="VD: 15000000"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Lương cơ bản (VNĐ)
+                        {formData.positionId && <span className="text-green-600 ml-1">(Từ chức vụ)</span>}
+                      </label>
+                      <input 
+                        type="number" 
+                        value={formData.baseSalary} 
+                        onChange={e => setField('baseSalary', e.target.value)}
+                        placeholder={formData.positionId ? 'Tự động từ chức vụ' : 'VD: 15000000'}
+                        className={`w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${formData.positionId ? 'bg-blue-50' : ''}`} 
+                      />
+                      {formData.positionId && (
+                        <p className="text-xs text-green-600 mt-1">💡 Lương được tự động điền từ chức vụ đã chọn</p>
+                      )}
                     </div>
                   </div>
                 </div>

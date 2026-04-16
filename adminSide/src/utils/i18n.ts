@@ -111,6 +111,10 @@ const translations: Translations = {
     vi: 'Phòng ban',
     en: 'Departments',
   },
+  'nav.positions': {
+    vi: 'Chức vụ',
+    en: 'Positions',
+  },
   'nav.integrations': {
     vi: 'Tích hợp',
     en: 'Integrations',

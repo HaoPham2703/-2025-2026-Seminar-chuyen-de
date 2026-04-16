@@ -1,396 +1,515 @@
-import { useEffect, useState } from 'react'
-import { adminService, type Employee } from '../services/adminService'
+﻿import { Briefcase, Edit, Plus, Search, Trash2, X } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { adminService } from '../services/adminService'
 import {
-  assignEmployeesToDepartment,
   createDepartment,
   deleteDepartment,
   getDepartmentEmployees,
   getDepartments,
-  removeEmployeesFromDepartment,
   updateDepartment,
-  type Department,
-  type DepartmentEmployee,
 } from '../services/departmentService'
-import { t } from '../utils/i18n'
+import { getPositionsByDepartment } from '../services/positionService'
+
+//  TypeScript Interfaces 
+interface DepartmentHead {
+  _id: string
+  name: string
+  email: string
+  phone?: string
+}
+
+interface Department {
+  _id: string
+  name: string
+  description: string
+  employeeCount: number
+  positionCount: number
+  head?: DepartmentHead | null
+}
+
+interface Employee {
+  _id: string
+  employeeId: string
+  name: string
+  email: string
+  phone: string
+  department?: string
+}
+
+interface Position {
+  _id: string
+  name: string
+  departmentId: string
+  baseSalary: number
+  employeeCount: number
+}
+
+interface FormModalState {
+  show: boolean
+  mode: 'create' | 'edit'
+  dept: Department | null
+  name: string
+  description: string
+  headEmployeeId: string | null
+  submitting: boolean
+  error: string | null
+}
+
+interface EmployeesModalState {
+  show: boolean
+  dept: Department | null
+  employees: Employee[]
+  loading: boolean
+  searchEmp: string
+}
+
+interface PositionsModalState {
+  show: boolean
+  dept: Department | null
+  positions: Position[]
+  loading: boolean
+}
 
 export default function Departments() {
-  // ─── State: Department List ──────────────────────────────────────────────
+  //  State: Department List 
   const [departments, setDepartments] = useState<Department[]>([])
   const [allEmployees, setAllEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
 
-  // ─── State: Department Modal ──────────────────────────────────────────────
-  const [showDeptModal, setShowDeptModal] = useState(false)
-  const [deptModalMode, setDeptModalMode] = useState<'create' | 'edit'>('create')
-  const [editingDept, setEditingDept] = useState<Department | null>(null)
-  const [deptName, setDeptName] = useState('')
-  const [deptDesc, setDeptDesc] = useState('')
-  const [submittingDept, setSubmittingDept] = useState(false)
+  //  State: Form Modal 
+  const [modal, setModal] = useState<FormModalState>({
+    show: false,
+    mode: 'create',
+    dept: null,
+    name: '',
+    description: '',
+    headEmployeeId: null,
+    submitting: false,
+    error: null,
+  })
+
+  //  State: Employees Modal 
+  const [empModal, setEmpModal] = useState<EmployeesModalState>({
+    show: false,
+    dept: null,
+    employees: [],
+    loading: false,
+    searchEmp: '',
+  })
+
+  //  State: Positions Modal 
+  const [posModal, setPosModal] = useState<PositionsModalState>({
+    show: false,
+    dept: null,
+    positions: [],
+    loading: false,
+  })
+
+  //  State: Delete confirmation 
   const [deletingDept, setDeletingDept] = useState<Department | null>(null)
 
-  // ─── State: Employee Modal ──────────────────────────────────────────────
-  const [showEmpModal, setShowEmpModal] = useState(false)
-  const [selectedDept, setSelectedDept] = useState<Department | null>(null)
-  const [deptEmployees, setDeptEmployees] = useState<DepartmentEmployee[]>([])
-  const [loadingEmp, setLoadingEmp] = useState(false)
-  const [selectedEmpIds, setSelectedEmpIds] = useState<Set<string>>(new Set())
-  const [assigning, setAssigning] = useState(false)
-
-  // ─── State: Unassigned Modal ────────────────────────────────────────────
-  const [showUnassignedModal, setShowUnassignedModal] = useState(false)
-
-  // ─── Load Departments + Employees ───────────────────────────────────────────
+  //  Load Data 
   useEffect(() => {
-    Promise.all([
-      getDepartments().catch(() => []),
-      adminService.getAllEmployees().catch(() => ({ employees: [] })),
-    ]).then(([depts, empData]) => {
-      const emps = empData.employees || []
-      setAllEmployees(emps)
-      // Compute employee count per department
-      const countMap: Record<string, number> = {}
-      emps.forEach(e => {
-        const dept = e.department || 'N/A'
-        countMap[dept] = (countMap[dept] || 0) + 1
-      })
-      const deptsWithCount = depts.map(d => ({ ...d, employeeCount: countMap[d.name] || 0 }))
-      setDepartments(deptsWithCount)
-    }).catch((err: Error | unknown) => {
-      if (err instanceof Error) setError(err.message || 'Failed to load')
-      else setError('Failed to load')
-    }).finally(() => setLoading(false))
+    loadData()
   }, [])
 
-  const filteredDepts = departments
-    .map(d => ({
-      ...d,
-      employeeCount: allEmployees.filter(e => e.department === d.name).length,
-    }))
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const [depts, empData] = await Promise.all([
+        getDepartments().catch(() => []),
+        adminService.getAllEmployees().catch(() => ({ employees: [] })),
+      ])
+      setDepartments(depts)
+      setAllEmployees(empData.employees || [])
+    } catch (err) {
+      if (err instanceof Error) setError(err.message)
+      else setError('Failed to load data')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  //  Filter 
+  const filtered = departments
     .filter(d =>
-      d.name.toLowerCase().includes(searchTerm.toLowerCase())
+      d.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (d.head?.name.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
     )
+    .sort((a, b) => a.name.localeCompare(b.name))
 
-  // ─── Stats ───────────────────────────────────────────────────────────────
-  const totalEmployees = allEmployees.length
-  const assignedEmployees = allEmployees.filter(
-    e => e.department && e.department !== 'N/A' && e.department.trim() !== ''
-  ).length
-  const unassignedCount = totalEmployees - assignedEmployees
+  //  Stats 
+  const totalEmployees = departments.reduce((sum, d) => sum + d.employeeCount, 0)
+  const totalPositions = departments.reduce((sum, d) => sum + (d.positionCount || 0), 0)
 
-  // ─── Department CRUD ───────────────────────────────────────────────────
+  //  Modal Handlers 
   const openCreateModal = () => {
-    setDeptModalMode('create')
-    setEditingDept(null)
-    setDeptName('')
-    setDeptDesc('')
-    setShowDeptModal(true)
-  }
-
-  const openEditModal = (dept: Department) => {
-    setDeptModalMode('edit')
-    setEditingDept(dept)
-    setDeptName(dept.name)
-    setDeptDesc(dept.description)
-    setShowDeptModal(true)
-  }
-
-  const handleSaveDept = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!deptName.trim()) { alert('Vui lòng nhập tên phòng ban'); return }
-    try {
-      setSubmittingDept(true)
-      if (deptModalMode === 'create') {
-        await createDepartment(deptName.trim(), deptDesc)
-      } else if (editingDept) {
-        await updateDepartment(editingDept._id, deptName.trim(), deptDesc)
-      }
-      setShowDeptModal(false)
-      const depts = await getDepartments()
-      setDepartments(depts)
-    } catch (err: Error | unknown) {
-      if (err instanceof Error) alert(err.message || 'Lỗi khi lưu phòng ban')
-      else alert('Lỗi khi lưu phòng ban')
-    } finally {
-      setSubmittingDept(false)
-    }
-  }
-
-  const handleDeleteDept = async (dept: Department) => {
-    if (!window.confirm(`${t('departments.confirmDelete')}\n${dept.name}\n\n${t('departments.confirmDeleteDesc')}`)) return
-    try {
-      setDeletingDept(dept)
-      await deleteDepartment(dept._id)
-      const depts = await getDepartments()
-      setDepartments(depts)
-    } catch (err: Error | unknown) {
-      if (err instanceof Error) alert(err.message || t('departments.cannotDelete'))
-      else alert(t('departments.cannotDelete'))
-    } finally {
-      setDeletingDept(null)
-    }
-  }
-
-  // ─── Employee Modal ───────────────────────────────────────────────────
-  const openEmployeeModal = async (dept: Department) => {
-    setSelectedDept(dept)
-    setSelectedEmpIds(new Set())
-    setShowEmpModal(true)
-    setLoadingEmp(true)
-    try {
-      const data = await getDepartmentEmployees(dept._id)
-      setDeptEmployees(data.employees)
-    } catch {
-      setDeptEmployees([])
-    } finally {
-      setLoadingEmp(false)
-    }
-  }
-
-  const closeEmpModal = () => {
-    setShowEmpModal(false)
-    setSelectedDept(null)
-    setDeptEmployees([])
-    setSelectedEmpIds(new Set())
-  }
-
-  const closeUnassignedModal = () => {
-    setShowUnassignedModal(false)
-  }
-
-  // Employees available to assign to a department (not currently in this dept)
-  const availableEmployees = selectedDept
-    ? allEmployees.filter(e => !deptEmployees.some(de => de._id === e._id))
-    : []
-
-  // Employees without any department assignment (truly unassigned)
-  const unassignedEmployees = allEmployees.filter(
-    e => !e.department || e.department === 'N/A' || e.department.trim() === ''
-  )
-
-  const toggleEmpSelection = (id: string) => {
-    setSelectedEmpIds(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
+    setModal({
+      show: true,
+      mode: 'create',
+      dept: null,
+      name: '',
+      description: '',
+      headEmployeeId: null,
+      submitting: false,
+      error: null,
     })
   }
 
-  const handleAssign = async () => {
-    if (!selectedDept || selectedEmpIds.size === 0) return
+  const openEditModal = (dept: Department) => {
+    setModal({
+      show: true,
+      mode: 'edit',
+      dept,
+      name: dept.name,
+      description: dept.description,
+      headEmployeeId: dept.head?._id || null,
+      submitting: false,
+      error: null,
+    })
+  }
+
+  const closeModal = () => {
+    setModal({
+      show: false,
+      mode: 'create',
+      dept: null,
+      name: '',
+      description: '',
+      headEmployeeId: null,
+      submitting: false,
+      error: null,
+    })
+  }
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setModal(prev => ({ ...prev, error: null }))
+
+    if (!modal.name.trim()) {
+      setModal(prev => ({ ...prev, error: 'Tên phòng ban là bắt buộc' }))
+      return
+    }
+
     try {
-      setAssigning(true)
-      await assignEmployeesToDepartment(selectedDept._id, Array.from(selectedEmpIds))
-      const [depts, data, empData] = await Promise.all([
-        getDepartments(),
-        getDepartmentEmployees(selectedDept._id),
-        adminService.getAllEmployees(),
-      ])
-      setDepartments(depts)
-      setDeptEmployees(data.employees)
-      setAllEmployees(empData.employees || [])
-      setSelectedEmpIds(new Set())
-    } catch (err: Error | unknown) {
-      if (err instanceof Error) alert(err.message)
+      setModal(prev => ({ ...prev, submitting: true }))
+
+      if (modal.mode === 'create') {
+        await createDepartment(modal.name, modal.description)
+      } else if (modal.dept) {
+        await updateDepartment(
+          modal.dept._id,
+          modal.name,
+          modal.description,
+          modal.headEmployeeId
+        )
+      }
+
+      await loadData()
+      closeModal()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Lỗi khi lưu'
+      setModal(prev => ({ ...prev, error: message }))
     } finally {
-      setAssigning(false)
+      setModal(prev => ({ ...prev, submitting: false }))
     }
   }
 
-  const handleRemove = async (employeeId: string) => {
-    if (!selectedDept) return
+  const handleDelete = async () => {
+    if (!deletingDept) return
+
     try {
-      setAssigning(true)
-      await removeEmployeesFromDepartment(selectedDept._id, [employeeId])
-      const [depts, data, empData] = await Promise.all([
-        getDepartments(),
-        getDepartmentEmployees(selectedDept._id),
-        adminService.getAllEmployees(),
-      ])
-      setDepartments(depts)
-      setDeptEmployees(data.employees)
-      setAllEmployees(empData.employees || [])
-    } catch (err: Error | unknown) {
-      if (err instanceof Error) alert(err.message)
+      setModal(prev => ({ ...prev, submitting: true }))
+      await deleteDepartment(deletingDept._id)
+      await loadData()
+      setDeletingDept(null)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Xóa thất bại'
+      setModal(prev => ({ ...prev, error: message }))
     } finally {
-      setAssigning(false)
+      setModal(prev => ({ ...prev, submitting: false }))
     }
   }
 
-  // ─── Loading ────────────────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-600">{t('common.loading')}</div>
-      </div>
-    )
+  const openEmployeesModal = async (dept: Department) => {
+    try {
+      setEmpModal(prev => ({ ...prev, show: true, dept, loading: true }))
+      const data = await getDepartmentEmployees(dept._id)
+      setEmpModal(prev => ({
+        ...prev,
+        employees: data.employees,
+        loading: false,
+      }))
+    } catch (err) {
+      setEmpModal(prev => ({ ...prev, loading: false }))
+    }
   }
 
-  if (error) {
-    return (
-      <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-        {error}
-      </div>
-    )
+  const closeEmployeesModal = () => {
+    setEmpModal({
+      show: false,
+      dept: null,
+      employees: [],
+      loading: false,
+      searchEmp: '',
+    })
+  }
+
+  const openPositionsModal = async (dept: Department) => {
+    try {
+      setPosModal(prev => ({ ...prev, show: true, dept, loading: true }))
+      const positions = await getPositionsByDepartment(dept._id)
+      setPosModal(prev => ({
+        ...prev,
+        positions: positions as any,
+        loading: false,
+      }))
+    } catch (err) {
+      setPosModal(prev => ({ ...prev, loading: false }))
+    }
+  }
+
+  const closePositionsModal = () => {
+    setPosModal({
+      show: false,
+      dept: null,
+      positions: [],
+      loading: false,
+    })
+  }
+
+  //  Get available employees for head selection (in this dept only) 
+  const deptEmployeeIds = empModal.employees.map(e => e._id)
+
+  const filteredEmployees = empModal.employees.filter(e =>
+    e.name.toLowerCase().includes(empModal.searchEmp.toLowerCase()) ||
+    e.email.toLowerCase().includes(empModal.searchEmp.toLowerCase())
+  )
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND',
+      maximumFractionDigits: 0,
+    }).format(value)
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('nav.departments')}</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Phòng Ban</h1>
           <p className="text-sm text-gray-500 mt-1">
-            {departments.length} {t('departments.departments')} — {totalEmployees} {t('departments.employees')}
+            Quản lý {departments.length} phòng ban, {totalEmployees} nhân viên, {totalPositions} chức vụ
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <button
+          onClick={openCreateModal}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <Plus size={20} />
+          Thêm Phòng Ban
+        </button>
+      </div>
+
+      {/* Search */}
+      <div className="flex gap-4 items-center">
+        <div className="flex-1 relative">
+          <Search size={20} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
-            placeholder={t('common.search') + '...'}
+            placeholder="Tìm tên phòng ban hoặc trưởng phòng..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
-          <button
-            onClick={openCreateModal}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors cursor-pointer text-sm"
-          >
-            + {t('departments.addDepartment')}
-          </button>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
-        {[
-          { label: t('departments.totalDepartments'), value: departments.length, color: 'text-gray-900' },
-          { label: t('departments.totalEmployees'), value: totalEmployees, color: 'text-blue-600' },
-          { label: 'Đã phân phòng', value: assignedEmployees, color: 'text-green-600' },
-          { label: t('departments.unassigned'), value: unassignedCount, color: 'text-orange-600', clickable: true },
-        ].map(s => (
-          <div
-            key={s.label}
-            onClick={() => s.clickable && setShowUnassignedModal(true)}
-            className={`bg-white rounded-lg border border-gray-200 p-4 ${'clickable' in s && s.clickable ? 'cursor-pointer hover:border-orange-300 hover:shadow-md transition-all' : ''}`}
-          >
-            <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-            <p className="text-sm text-gray-500 mt-1">{s.label}</p>
-          </div>
-        ))}
-      </div>
+      {/* Error Alert */}
+      {error && (
+        <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center justify-between">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-red-700 hover:text-red-900">
+            <X size={20} />
+          </button>
+        </div>
+      )}
 
-      {/* Department Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredDepts.length === 0 ? (
-          <div className="col-span-full p-12 text-center text-gray-400">
-            {t('common.noData')}
-          </div>
-        ) : (
-          filteredDepts.map(dept => (
-            <div key={dept._id} className="bg-white rounded-xl border border-gray-200 hover:border-blue-300 hover:shadow-md transition-all p-6">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-gray-900">{dept.name}</h3>
-                  {dept.description && (
-                    <p className="text-xs text-gray-400 mt-0.5">{dept.description}</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => openEditModal(dept)}
-                    className="p-1.5 rounded-md hover:bg-gray-100 text-gray-400 hover:text-blue-600 transition-colors cursor-pointer"
-                    title="Sửa"
-                  >
-                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-                      <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => handleDeleteDept(dept)}
-                    disabled={deletingDept?._id === dept._id}
-                    className="p-1.5 rounded-md hover:bg-red-50 text-gray-400 hover:text-red-600 transition-colors cursor-pointer disabled:opacity-40"
-                    title="Xóa"
-                  >
-                    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                      <polyline points="3,6 5,6 21,6"/>
-                      <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
-                      <path d="M10 11v6M14 11v6"/>
-                      <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
-                    </svg>
-                  </button>
-                </div>
-              </div>
+      {/* Loading */}
+      {loading && (
+        <div className="flex justify-center py-12">
+          <div className="text-gray-500">Đang tải...</div>
+        </div>
+      )}
 
-              <div className="flex items-center gap-2 mb-4">
-                <span className="px-2.5 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-semibold">
-                  {dept.employeeCount || 0} {t('departments.employees')}
-                </span>
-              </div>
+      {/* Table */}
+      {!loading && (
+        <div className="overflow-x-auto bg-white rounded-lg shadow">
+          {filtered.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">Không có phòng ban nào</div>
+          ) : (
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Tên Phòng Ban</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Trưởng Phòng</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Số NV</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Số Chức Vụ</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Thao Tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {filtered.map(dept => (
+                  <tr key={dept._id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div>
+                        <p className="font-medium text-gray-900">{dept.name}</p>
+                        {dept.description && (
+                          <p className="text-sm text-gray-500">{dept.description}</p>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {dept.head ? (
+                        <div className="bg-blue-50 border border-blue-200 rounded px-3 py-2 inline-block">
+                          <p className="font-medium text-blue-900">{dept.head.name}</p>
+                          <p className="text-xs text-blue-600">{dept.head.email}</p>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 italic">Chưa có</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      <button
+                        onClick={() => openEmployeesModal(dept)}
+                        className="text-blue-600 hover:text-blue-900 hover:underline font-medium"
+                      >
+                        {dept.employeeCount}
+                      </button>
+                    </td>
+                    <td className="px-6 py-4">
+                      <button
+                        onClick={() => openPositionsModal(dept)}
+                        className="text-blue-600 hover:text-blue-900 hover:underline font-medium flex items-center gap-1"
+                      >
+                        <Briefcase size={16} />
+                        {dept.positionCount}
+                      </button>
+                    </td>
+                    <td className="px-6 py-4 text-sm space-x-2 flex">
+                      <button
+                        onClick={() => openEditModal(dept)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                        title="Sửa"
+                      >
+                        <Edit size={18} />
+                      </button>
+                      <button
+                        onClick={() => setDeletingDept(dept)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors"
+                        title="Xóa"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
-              <button
-                onClick={() => openEmployeeModal(dept)}
-                className="w-full px-3 py-2 border border-blue-300 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-50 transition-colors cursor-pointer"
-              >
-                {t('departments.manageEmployees')} →
-              </button>
-            </div>
-          ))
-        )}
-      </div>
+      {/* Form Modal */}
+      {modal.show && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md max-h-96 overflow-y-auto">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">
+              {modal.mode === 'create' ? 'Tạo Phòng Ban Mới' : 'Sửa Phòng Ban'}
+            </h2>
 
-      {/* ─── DEPARTMENT CREATE/EDIT MODAL ─────────────────────────────── */}
-      {showDeptModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md">
-            <div className="p-6 border-b border-gray-200">
-              <h2 className="text-xl font-bold text-gray-900">
-                {deptModalMode === 'create' ? t('departments.addDepartment') : t('departments.editDepartment')}
-              </h2>
-            </div>
-            <form onSubmit={handleSaveDept} className="p-6 space-y-4">
+            <form onSubmit={handleSave} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t('departments.departmentName')} *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tên Phòng Ban *</label>
                 <input
                   type="text"
-                  value={deptName}
-                  onChange={e => setDeptName(e.target.value)}
-                  placeholder="VD: Phòng Kỹ thuật"
-                  required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  value={modal.name}
+                  onChange={e => setModal(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="Vd: Kỹ thuật..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={modal.submitting}
                 />
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t('departments.description')}
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Mô Tả</label>
                 <textarea
-                  value={deptDesc}
-                  onChange={e => setDeptDesc(e.target.value)}
-                  placeholder="Mô tả phòng ban (tùy chọn)"
+                  value={modal.description}
+                  onChange={e => setModal(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Mô tả phòng ban..."
                   rows={3}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={modal.submitting}
                 />
               </div>
-              <div className="flex gap-3 pt-2">
+
+              {modal.mode === 'edit' && modal.dept && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Trưởng Phòng</label>
+                  <select
+                    value={modal.headEmployeeId || ''}
+                    onChange={e =>
+                      setModal(prev => ({
+                        ...prev,
+                        headEmployeeId: e.target.value || null,
+                      }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    disabled={modal.submitting}
+                  >
+                    <option value="">-- Chọn Trưởng Phòng --</option>
+                    {deptEmployeeIds.length === 0 ? (
+                      <option disabled>Không có nhân viên trong phòng</option>
+                    ) : (
+                      allEmployees
+                        .filter(e => deptEmployeeIds.includes(e._id))
+                        .map(e => (
+                          <option key={e._id} value={e._id}>
+                            {e.name} ({e.employeeId})
+                          </option>
+                        ))
+                    )}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Trưởng phòng phải là nhân viên của phòng ban này
+                  </p>
+                </div>
+              )}
+
+              {modal.error && (
+                <div className="p-3 bg-red-100 text-red-700 rounded text-sm">{modal.error}</div>
+              )}
+
+              <div className="flex gap-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setShowDeptModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors cursor-pointer"
+                  onClick={closeModal}
+                  className="flex-1 px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  disabled={modal.submitting}
                 >
-                  {t('common.cancel')}
+                  Hủy
                 </button>
                 <button
                   type="submit"
-                  disabled={submittingDept}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  disabled={modal.submitting}
                 >
-                  {submittingDept ? t('common.saving') : t('common.save')}
+                  {modal.submitting ? 'Đang lưu...' : 'Lưu'}
                 </button>
               </div>
             </form>
@@ -398,145 +517,139 @@ export default function Departments() {
         </div>
       )}
 
-      {/* ─── EMPLOYEE MANAGEMENT MODAL ───────────────────────────────── */}
-      {showEmpModal && selectedDept && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-            {/* Header */}
-            <div className="p-6 border-b border-gray-200 flex-shrink-0">
-              <h2 className="text-xl font-bold text-gray-900">{t('departments.manageEmployees')}</h2>
-              <p className="text-sm text-gray-500 mt-1">{selectedDept.name}</p>
-            </div>
-
-            {/* Body */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {/* Current employees */}
-              <div>
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">
-                  {t('departments.employees')} ({deptEmployees.length})
-                </h3>
-                {loadingEmp ? (
-                  <p className="text-sm text-gray-400">{t('common.loading')}</p>
-                ) : deptEmployees.length === 0 ? (
-                  <p className="text-sm text-gray-400 italic">Chưa có nhân viên nào trong phòng ban này.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {deptEmployees.map(emp => (
-                      <div key={emp._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{emp.name}</p>
-                          <p className="text-xs text-gray-400">{emp.email}</p>
-                        </div>
-                        <button
-                          onClick={() => handleRemove(emp._id)}
-                          disabled={assigning}
-                          className="px-3 py-1 text-xs rounded-md border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50 cursor-pointer"
-                        >
-                          {t('departments.removeEmployees')}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Other employees */}
-              <div>
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">
-                  Nhân viên khả thi ({availableEmployees.length})
-                </h3>
-                {availableEmployees.length === 0 ? (
-                  <p className="text-sm text-gray-400 italic">Không còn nhân viên nào khả thi.</p>
-                ) : (
-                  <div className="max-h-60 overflow-y-auto space-y-2">
-                    {availableEmployees.map(emp => (
-                      <div key={emp._id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
-                        <input
-                          type="checkbox"
-                          checked={selectedEmpIds.has(emp._id)}
-                          onChange={() => toggleEmpSelection(emp._id)}
-                          className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer"
-                        />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-gray-900">{emp.name}</p>
-                          <p className="text-xs text-gray-400">{emp.email} · {emp.department || 'Chưa phân'}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="p-6 border-t border-gray-200 flex gap-3 flex-shrink-0">
+      {/* Employees Modal */}
+      {empModal.show && empModal.dept && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-96 overflow-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-900">
+                Nhân viên - {empModal.dept.name}
+              </h2>
               <button
-                onClick={closeEmpModal}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors cursor-pointer"
+                onClick={closeEmployeesModal}
+                className="text-gray-500 hover:text-gray-700"
               >
-                {t('common.cancel')}
-              </button>
-              <button
-                onClick={handleAssign}
-                disabled={assigning || selectedEmpIds.size === 0}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
-              >
-                {assigning
-                  ? 'Đang gán...'
-                  : `${t('departments.assignEmployees')} (${selectedEmpIds.size})`}
+                <X size={24} />
               </button>
             </div>
+
+            <input
+              type="text"
+              placeholder="Tìm kiếm tên hoặc email..."
+              value={empModal.searchEmp}
+              onChange={e => setEmpModal(prev => ({ ...prev, searchEmp: e.target.value }))}
+              className="w-full mb-4 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+            />
+
+            {empModal.loading ? (
+              <div className="flex justify-center py-8">
+                <div className="text-gray-500">Đang tải...</div>
+              </div>
+            ) : filteredEmployees.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">Không có nhân viên nào</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Tên</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Email</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">SDT</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {filteredEmployees.map(emp => {
+                    const isHead = empModal.dept?.head?.email === emp.email
+                    return (
+                      <tr
+                        key={emp._id}
+                        className={isHead ? 'bg-blue-50' : 'hover:bg-gray-50'}
+                      >
+                        <td className={`px-4 py-2 ${isHead ? 'font-bold text-blue-900' : 'text-gray-900'}`}>
+                          {emp.name}
+                          {isHead && <span className="ml-2 px-2 py-0.5 bg-blue-200 text-blue-900 rounded text-xs font-semibold">Trưởng phòng</span>}
+                        </td>
+                        <td className="px-4 py-2 text-gray-600">{emp.email}</td>
+                        <td className="px-4 py-2 text-gray-600">{emp.phone}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}
 
-      {/* ─── UNASSIGNED EMPLOYEES MODAL ─────────────────────────────── */}
-      {showUnassignedModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-            {/* Header */}
-            <div className="p-6 border-b border-gray-200 flex-shrink-0">
-              <h2 className="text-xl font-bold text-gray-900">Nhân viên chưa phân phòng</h2>
-              <p className="text-sm text-gray-500 mt-1">
-                {unassignedEmployees.length} nhân viên cần được gán vào phòng ban
-              </p>
-            </div>
-
-            {/* Body */}
-            <div className="flex-1 overflow-y-auto p-6">
-              {unassignedEmployees.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <div className="text-3xl mb-2">✨</div>
-                  <p className="text-base font-medium text-gray-900">Tuyệt vời!</p>
-                  <p className="text-sm text-gray-500 mt-1">Tất cả nhân viên đều đã được phân phòng.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-3">
-                  {unassignedEmployees.map(emp => (
-                    <div key={emp._id} className="flex items-center justify-between p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-gray-900">{emp.name}</p>
-                        <p className="text-xs text-gray-500 mt-1">{emp.email}</p>
-                        <p className="text-xs text-gray-500">{emp.position}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs font-medium text-yellow-700 bg-yellow-100 px-2.5 py-1 rounded-full">
-                          Chưa phân phòng
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="p-6 border-t border-gray-200 flex-shrink-0">
+      {/* Positions Modal */}
+      {posModal.show && posModal.dept && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-96 overflow-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-900">
+                Chức Vụ - {posModal.dept.name}
+              </h2>
               <button
-                onClick={closeUnassignedModal}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors cursor-pointer"
+                onClick={closePositionsModal}
+                className="text-gray-500 hover:text-gray-700"
               >
-                {t('common.close') || 'Đóng'}
+                <X size={24} />
+              </button>
+            </div>
+
+            {posModal.loading ? (
+              <div className="flex justify-center py-8">
+                <div className="text-gray-500">Đang tải...</div>
+              </div>
+            ) : posModal.positions.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">Không có chức vụ nào</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Tên Chức Vụ</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-700">Lương</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {posModal.positions.map(pos => (
+                    <tr key={pos._id} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 font-medium text-gray-900">{pos.name}</td>
+                      <td className="px-4 py-2 text-gray-600">{formatCurrency(pos.baseSalary)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation */}
+      {deletingDept && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-sm">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Xóa Phòng Ban</h2>
+            <p className="text-gray-600 mb-6">
+              Bạn có chắc muốn xóa phòng ban <strong>{deletingDept.name}</strong>?
+              <br />
+              <span className="text-sm text-gray-500 mt-2 block">
+                (Chỉ có thể xóa nếu không có nhân viên)
+              </span>
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeletingDept(null)}
+                className="flex-1 px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                disabled={modal.submitting}
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleDelete}
+                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                disabled={modal.submitting}
+              >
+                {modal.submitting ? 'Đang xóa...' : 'Xóa'}
               </button>
             </div>
           </div>

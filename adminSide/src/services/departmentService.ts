@@ -5,6 +5,14 @@ export interface Department {
   name: string
   description: string
   employeeCount: number
+  positionCount: number
+  head?: {
+    _id: string
+    employeeId: string
+    name: string
+    email: string
+    phone: string
+  } | null
 }
 
 export interface DepartmentEmployee {
@@ -30,8 +38,13 @@ export async function createDepartment(name: string, description?: string): Prom
   return response.data!
 }
 
-export async function updateDepartment(id: string, name: string, description?: string): Promise<void> {
-  const response = await api.put(`/admin/departments/${id}`, { name, description })
+export async function updateDepartment(
+  id: string,
+  name?: string,
+  description?: string,
+  headEmployeeId?: string | null
+): Promise<void> {
+  const response = await api.put(`/admin/departments/${id}`, { name, description, headEmployeeId })
   if (!response.success) throw new Error(response.message || 'Failed to update department')
 }
 
@@ -73,3 +86,4 @@ export async function removeEmployeesFromDepartment(
   })
   if (!response.success) throw new Error(response.message || 'Failed to remove employees')
 }
+
