@@ -20,12 +20,15 @@ import { RefreshableScrollView } from '@/components/refreshable-scroll-view';
 import { useTabReload } from '@/hooks/use-tab-reload';
 import {
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   MoreVertical,
   Network,
   Home,
   ChevronUp,
 } from 'lucide-react-native';
 import { getAttendanceHistory, type AttendanceRecord as ApiAttendanceRecord } from '@/src/services/attendanceService';
+import { getMySchedules, type DailySchedule } from '@/src/services/scheduleService';
 import { getEmployeeProfile } from '@/src/services/employeeService';
 import { getApprovedLeaves, type LeaveRequest } from '@/src/services/leaveService';
 import LeaveRequestModal from '@/src/components/LeaveRequestModal';
@@ -410,6 +413,117 @@ const ContextMenu = ({
   );
 };
 
+interface ScheduleViewProps {
+  scheduleMap: Record<string, DailySchedule>;
+  scheduleWeekStart: string;
+  scheduleWeekEnd: string;
+  onPrevWeek: () => void;
+  onNextWeek: () => void;
+  onToday: () => void;
+}
+
+const SHIFT_STYLES: Record<string, { bg: string; text: string; label: string }> = {
+  MORNING:   { bg: '#DBEAFE', text: '#1D4ED8', label: 'Sáng' },
+  AFTERNOON: { bg: '#FEF3C7', text: '#B45309', label: 'Chiều' },
+  NIGHT:     { bg: '#EDE9FE', text: '#6D28D9', label: 'Tối' },
+  FULL_DAY:  { bg: '#D1FAE5', text: '#065F46', label: 'Nguyên ngày' },
+  OFF:       { bg: '#F3F4F6', text: '#6B7280', label: 'Nghỉ' },
+  CUSTOM:    { bg: '#FCE7F3', text: '#9D174D', label: 'Tùy chỉnh' },
+};
+
+const DAYS_OF_WEEK_SHORT = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+
+function formatWeekRange(weekStart: string, weekEnd: string): string {
+  if (!weekStart) return '';
+  const start = new Date(`${weekStart}T00:00:00.000+07:00`);
+  const end = new Date(`${weekEnd}T00:00:00.000+07:00`);
+  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'numeric' };
+  return `${start.toLocaleDateString('vi-VN', opts)} – ${end.toLocaleDateString('vi-VN', opts)}`;
+}
+
+function ScheduleView({ scheduleMap, scheduleWeekStart, scheduleWeekEnd, onPrevWeek, onNextWeek, onToday }: ScheduleViewProps) {
+  const weekDates = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(`${scheduleWeekStart}T00:00:00.000+07:00`);
+    d.setDate(d.getDate() + i);
+    return d.toISOString().split('T')[0];
+  });
+
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  return (
+    <View style={scheduleStyles.container}>
+      {/* Week navigation */}
+      <View style={scheduleStyles.weekNav}>
+        <Pressable onPress={onPrevWeek} style={scheduleStyles.navBtn}>
+          <ChevronLeft size={20} color="hsl(25, 30%, 20%)" />
+        </Pressable>
+        <Pressable onPress={onToday} style={{ flex: 1, alignItems: 'center' }}>
+          <Text style={scheduleStyles.weekText}>
+            {formatWeekRange(scheduleWeekStart, scheduleWeekEnd)}
+          </Text>
+        </Pressable>
+        <Pressable onPress={onNextWeek} style={scheduleStyles.navBtn}>
+          <ChevronRight size={20} color="hsl(25, 30%, 20%)" />
+        </Pressable>
+      </View>
+
+      {/* Legend */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+        <View style={scheduleStyles.legend}>
+          {Object.entries(SHIFT_STYLES).map(([shift, style]) => (
+            <View key={shift} style={[scheduleStyles.legendItem, { backgroundColor: style.bg }]}>
+              <Text style={[scheduleStyles.legendText, { color: style.text }]}>{style.label}</Text>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+
+      {/* Day cards */}
+      {weekDates.map((dateStr, index) => {
+        const record = scheduleMap[dateStr];
+        const shiftType = record?.shiftType || 'OFF';
+        const shiftStyle = SHIFT_STYLES[shiftType] || SHIFT_STYLES.OFF;
+        const isToday = dateStr === todayStr;
+        const isWeekendDay = index === 0 || index === 6;
+
+        return (
+          <View
+            key={dateStr}
+            style={[
+              scheduleStyles.dayCard,
+              isToday && scheduleStyles.dayCardToday,
+              isWeekendDay && scheduleStyles.dayCardWeekend,
+            ]}
+          >
+            <View style={[scheduleStyles.dayHeader, isToday && scheduleStyles.dayHeaderToday]}>
+              <Text style={[scheduleStyles.dayName, isToday && scheduleStyles.dayNameToday]}>
+                {DAYS_OF_WEEK_SHORT[index]}
+              </Text>
+              <Text style={[scheduleStyles.dayDate, isToday && scheduleStyles.dayDateToday]}>
+                {new Date(`${dateStr}T00:00:00.000+07:00`).getDate()}/{new Date(`${dateStr}T00:00:00.000+07:00`).getMonth() + 1}
+              </Text>
+            </View>
+            <View style={[scheduleStyles.shiftBox, { backgroundColor: shiftStyle.bg }]}>
+              <Text style={[scheduleStyles.shiftLabel, { color: shiftStyle.text }]}>
+                {shiftType !== 'OFF' && record?.startTime
+                  ? `${record.startTime} – ${record.endTime || ''}`
+                  : shiftStyle.label}
+              </Text>
+            </View>
+            {record?.isOverridden && (
+              <Text style={scheduleStyles.overrideText}>Đã điều chỉnh</Text>
+            )}
+          </View>
+        );
+      })}
+
+      <Text style={scheduleStyles.infoText}>
+        Lịch do quản trị viên xếp. Muốn thay đổi, liên hệ bộ phận nhân sự.
+      </Text>
+    </View>
+  );
+}
+
 export default function AttendanceScreen() {
   const { colors } = useTheme();
   const [selectedYear, setSelectedYear] = useState(currentYear);
@@ -442,6 +556,10 @@ export default function AttendanceScreen() {
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [scheduleMap, setScheduleMap] = useState<Record<string, DailySchedule>>({});
+  const [scheduleWeekStart, setScheduleWeekStart] = useState('');
+  const [scheduleWeekEnd, setScheduleWeekEnd] = useState('');
 
   const monthScrollViewRef = useRef<any>(null);
 
@@ -497,6 +615,25 @@ export default function AttendanceScreen() {
     }, [employeeId, selectedYear, selectedMonth])
   );
 
+  const loadSchedule = async (weekStart: string) => {
+    try {
+      const data = await getMySchedules(weekStart);
+      setScheduleMap(data.schedule);
+      setScheduleWeekStart(data.weekStart);
+      setScheduleWeekEnd(data.weekEnd);
+    } catch (e) {
+      setScheduleMap({});
+    }
+  };
+
+  const getMondayStr = (date: Date): string => {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    return d.toISOString().split('T')[0];
+  };
+
   const loadEmployeeId = async () => {
     try {
       const token = await getAuthToken();
@@ -533,7 +670,7 @@ export default function AttendanceScreen() {
       const endDate = new Date(selectedYear, selectedMonth + 1, 0);
       endDate.setHours(23, 59, 59, 999);
 
-      // Load attendance history and approved leave requests in parallel
+      // Load attendance history, approved leaves, and schedule in parallel
       const [historyData, approvedLeaves] = await Promise.all([
         getAttendanceHistory(employeeId, {
           startDate: startDate.toISOString(),
@@ -542,6 +679,9 @@ export default function AttendanceScreen() {
         }),
         getApprovedLeaves(employeeId),
       ]);
+
+      // Load current week's schedule
+      await loadSchedule(getMondayStr(new Date()));
 
       // Map API records to UI format (include leave status)
       const mappedRecords = mapApiRecordsToUI(historyData.records, approvedLeaves, selectedYear, selectedMonth);
@@ -750,6 +890,48 @@ export default function AttendanceScreen() {
           </Pressable>
         </View>
 
+        {/* Segmented control: Attendance / Schedule */}
+        <View style={scheduleStyles.segmentContainer}>
+          <Pressable
+            style={[scheduleStyles.segmentBtn, !showSchedule && scheduleStyles.segmentBtnActive]}
+            onPress={() => setShowSchedule(false)}
+          >
+            <Text style={[scheduleStyles.segmentText, !showSchedule && scheduleStyles.segmentTextActive]}>Chấm công</Text>
+          </Pressable>
+          <Pressable
+            style={[scheduleStyles.segmentBtn, showSchedule && scheduleStyles.segmentBtnActive]}
+            onPress={() => {
+              setShowSchedule(true);
+              if (Object.keys(scheduleMap).length === 0) {
+                loadSchedule(getMondayStr(new Date()));
+              }
+            }}
+          >
+            <Text style={[scheduleStyles.segmentText, showSchedule && scheduleStyles.segmentTextActive]}>Lịch tuần</Text>
+          </Pressable>
+        </View>
+
+        {showSchedule ? (
+          <ScheduleView
+            scheduleMap={scheduleMap}
+            scheduleWeekStart={scheduleWeekStart}
+            scheduleWeekEnd={scheduleWeekEnd}
+            onPrevWeek={() => {
+              const current = new Date(`${scheduleWeekStart}T00:00:00.000+07:00`);
+              current.setDate(current.getDate() - 7);
+              loadSchedule(current.toISOString().split('T')[0]);
+            }}
+            onNextWeek={() => {
+              const current = new Date(`${scheduleWeekStart}T00:00:00.000+07:00`);
+              current.setDate(current.getDate() + 7);
+              loadSchedule(current.toISOString().split('T')[0]);
+            }}
+            onToday={() => loadSchedule(getMondayStr(new Date()))}
+          />
+        ) : (
+          <></>
+        )}
+
         {/* Month Navigation */}
         <View style={styles.monthNavigationContainer}>
           <ScrollView
@@ -869,7 +1051,8 @@ export default function AttendanceScreen() {
           </View>
         </Animated.View>
 
-        {/* Daily Log */}
+        {/* Daily Log — only show when in Attendance mode */}
+        {!showSchedule && (
         <Animated.View
           entering={FadeInDown.delay(400).duration(400)}
           style={styles.dailyLogContainer}
@@ -919,6 +1102,7 @@ export default function AttendanceScreen() {
             ))
           )}
         </Animated.View>
+        )}
       </RefreshableScrollView>
 
       {/* Year Picker Modal */}
@@ -1260,5 +1444,154 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: 'hsl(25, 30%, 20%)',
+  },
+});
+
+const scheduleStyles = StyleSheet.create({
+  container: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  weekNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  navBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'white',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  weekText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: 'hsl(25, 30%, 20%)',
+  },
+  legend: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  legendItem: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  legendText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  dayCard: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  dayCardToday: {
+    borderWidth: 2,
+    borderColor: 'hsl(30, 55%, 55%)',
+  },
+  dayCardWeekend: {
+    backgroundColor: 'hsl(30, 30%, 95%)',
+    opacity: 0.85,
+  },
+  dayHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'hsl(30, 25%, 90%)',
+  },
+  dayHeaderToday: {
+    backgroundColor: 'hsl(30, 55%, 96%)',
+  },
+  dayName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: 'hsl(25, 30%, 20%)',
+  },
+  dayNameToday: {
+    color: 'hsl(30, 55%, 55%)',
+  },
+  dayDate: {
+    fontSize: 13,
+    color: 'hsl(25, 15%, 50%)',
+  },
+  dayDateToday: {
+    color: 'hsl(30, 55%, 50%)',
+    fontWeight: '600',
+  },
+  shiftBox: {
+    margin: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  shiftLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  overrideText: {
+    fontSize: 11,
+    color: 'hsl(30, 55%, 45%)',
+    fontWeight: '500',
+    fontStyle: 'italic',
+    textAlign: 'right',
+    paddingHorizontal: 14,
+    paddingBottom: 8,
+  },
+  infoText: {
+    marginTop: 8,
+    fontSize: 13,
+    color: 'hsl(25, 15%, 45%)',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  segmentContainer: {
+    flexDirection: 'row',
+    marginHorizontal: 20,
+    marginBottom: 16,
+    backgroundColor: 'hsl(30, 40%, 95%)',
+    borderRadius: 12,
+    padding: 4,
+  },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 10,
+  },
+  segmentBtnActive: {
+    backgroundColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  segmentText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'hsl(25, 15%, 50%)',
+  },
+  segmentTextActive: {
+    color: 'hsl(25, 30%, 20%)',
+    fontWeight: '700',
   },
 });

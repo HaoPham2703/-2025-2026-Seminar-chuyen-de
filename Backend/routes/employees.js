@@ -271,6 +271,110 @@ router.put('/profile', async (req, res, next) => {
 });
 
 /**
+ * GET /api/employees/schedules/my
+ * Lấy lịch làm việc tuần của employee hiện tại
+ * Query: weekStart (YYYY-MM-DD) — ngày thứ Hai
+ */
+router.get('/schedules/my', async (req, res, next) => {
+  try {
+    const { userId, tenantId } = req.user;
+    const { weekStart } = req.query;
+    const db = getDatabase();
+    const userIdObjectId = new ObjectId(userId);
+    const tenantObjectId = new ObjectId(tenantId);
+
+    // Lấy employee ID của user hiện tại
+    const employee = await db.collection('employees').findOne({
+      userId: userIdObjectId,
+      tenantId: tenantObjectId,
+    });
+
+    if (!employee) {
+      return res.status(404).json({ success: false, message: 'Employee not found' });
+    }
+
+    const employeeObjectId = employee._id;
+
+    if (!weekStart) {
+      return res.status(400).json({ success: false, message: 'weekStart is required (YYYY-MM-DD)' });
+    }
+
+    // Tính Chủ Nhật cuối tuần từ weekStart (thứ Hai)
+    const monday = new Date(`${weekStart}T00:00:00.000+07:00`);
+    const sundayDate = new Date(monday.getTime() + 6 * 24 * 60 * 60 * 1000);
+    const sundayStr = sundayDate.toISOString().split('T')[0];
+
+    // Lấy lịch override từ employeeDailySchedules
+    const schedules = await db.collection('employeeDailySchedules').find({
+      tenantId: tenantObjectId,
+      employeeId: employeeObjectId,
+      date: { $gte: weekStart, $lte: sundayStr },
+    }).toArray();
+
+    // Lấy lịch mặc định từ schedules collection
+    const defaultSchedule = await db.collection('schedules').findOne({
+      tenantId: tenantObjectId,
+      employeeId: employeeObjectId,
+    });
+
+    // Build map { [date]: schedule }
+    const scheduleMap = {};
+    const dates = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday.getTime() + i * 24 * 60 * 60 * 1000);
+      dates.push(d.toISOString().split('T')[0]);
+    }
+
+    for (const date of dates) {
+      // Ưu tiên override
+      const override = schedules.find(s => s.date === date);
+      if (override) {
+        scheduleMap[date] = {
+          date,
+          shiftType: override.shiftType,
+          startTime: override.startTime || null,
+          endTime: override.endTime || null,
+          isOverridden: true,
+        };
+      } else if (defaultSchedule) {
+        // Lịch mặc định
+        const dayOfWeek = new Date(`${date}T00:00:00.000+07:00`).getDay(); // 0=Sun, 1=Mon...
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        if (!isWeekend) {
+          scheduleMap[date] = {
+            date,
+            shiftType: 'FULL_DAY',
+            startTime: defaultSchedule.startTime || '08:00',
+            endTime: defaultSchedule.endTime || '17:00',
+            isOverridden: false,
+          };
+        } else {
+          scheduleMap[date] = {
+            date,
+            shiftType: 'OFF',
+            startTime: null,
+            endTime: null,
+            isOverridden: false,
+          };
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        employeeId: employeeObjectId.toString(),
+        weekStart,
+        weekEnd: sundayStr,
+        schedule: scheduleMap,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * POST /api/employees/:employeeId/leave-requests
  * Tạo yêu cầu nghỉ phép cho employee (self-service)
  */
