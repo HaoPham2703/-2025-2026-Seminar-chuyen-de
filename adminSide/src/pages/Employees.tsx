@@ -135,8 +135,7 @@ export default function Employees() {
 
   const handleDepartmentChange = async (deptName: string) => {
     setField('department', deptName)
-    setField('departmentId', '')
-    setField('position', '')
+    setField('position', '')   // reset position on dept change
     setField('positionId', '')
     setField('baseSalary', '')
     setPositions([])
@@ -180,14 +179,16 @@ export default function Employees() {
     setShowFormModal(true)
   }
 
-  const openEdit = (emp: Employee) => {
+  const openEdit = async (emp: Employee) => {
     setFormMode('edit')
     setFormError(null)
     setFormSuccess(null)
-    // Edit chỉ cho phép sửa: firstName, lastName, department, position, phone
+
     const parts = emp.name?.split(' ') || []
     const lastName = parts.slice(1).join(' ') || ''
     const firstName = parts[0] || ''
+
+    // Default form: reset position to empty until positions are loaded
     setFormData({
       employeeId: emp.employeeId || '',
       firstName,
@@ -200,7 +201,7 @@ export default function Employees() {
       department: emp.department || '',
       departmentId: '',
       position: emp.position || '',
-      positionId: '',
+      positionId: '', // will be set after positions load
       employmentType: 'FULL_TIME',
       hireDate: new Date().toISOString().split('T')[0],
       baseSalary: '',
@@ -211,6 +212,38 @@ export default function Employees() {
       emergencyPhone: '',
       emergencyRelation: '',
     })
+    setPositions([])
+
+    // Load positions of this department to set positionId + baseSalary correctly
+    if (emp.department && emp.department !== 'N/A') {
+      try {
+        const dept = departmentObjects.find((d: Department) => d.name === emp.department)
+        if (dept) {
+          const deptPositions = await getPositionsByDepartment(dept._id)
+          const loadedPositions = deptPositions as Position[]
+          setPositions(loadedPositions)
+
+          // Find matching position → set positionId + baseSalary
+          const matchedPos = loadedPositions.find(p => p.name === emp.position)
+          if (matchedPos) {
+            setFormData(prev => ({
+              ...prev,
+              departmentId: dept._id,
+              positionId: matchedPos._id,
+              baseSalary: matchedPos.baseSalary.toString(),
+            }))
+          } else {
+            // Position name didn't match (maybe position was renamed)
+            // Try by position name directly
+            const fallback = loadedPositions.find(p => p.name === emp.position)
+            setFormData(prev => ({ ...prev, departmentId: dept._id }))
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load positions for edit:', err)
+      }
+    }
+
     setDetailEmployee(emp)
     setShowFormModal(true)
     setShowDetailModal(false)
@@ -233,6 +266,17 @@ export default function Employees() {
     if (!formData.email.trim()) {
       setFormError('Email là bắt buộc')
       return
+    }
+    if (formMode === 'create' && !formData.positionId) {
+      setFormError('Phải chọn chức vụ trước khi thêm nhân viên')
+      return
+    }
+    if (formMode === 'edit') {
+      // Enforce PB(1)-(N)NV: employee must have a position
+      if (!formData.positionId) {
+        setFormError('Mỗi nhân viên phải thuộc một chức vụ. Vui lòng chọn chức vụ.')
+        return
+      }
     }
 
     try {
@@ -272,7 +316,10 @@ export default function Employees() {
         await adminService.updateEmployee(detailEmployee._id, {
           name: `${formData.firstName} ${formData.lastName}`,
           email: formData.email,
+          department: formData.department,
+          departmentId: formData.departmentId,
           position: formData.position,
+          positionId: formData.positionId,
           phone: formData.phone,
         })
         setFormSuccess('✅ Cập nhật nhân viên thành công!')

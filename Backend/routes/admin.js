@@ -29,6 +29,27 @@ function getVietnamMonthRange(year, month) {
   return { start, end };
 }
 
+// Parse input lương có thể ở dạng số hoặc chuỗi đã format (vd: "12,000,000", "12.000.000 ₫")
+function parseMoneyInput(value) {
+  if (value === null || value === undefined || value === '') return 0;
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) return 0;
+
+  const sanitized = raw
+    .replace(/\s/g, '')
+    .replace(/₫|VND|vnd|đ/g, '')
+    .replace(/,/g, '')
+    .replace(/\./g, '');
+
+  const parsed = Number(sanitized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 // Debug: Log khi module được load
 console.log('✅ Admin routes module loaded');
 
@@ -383,7 +404,7 @@ router.post('/employees', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), as
         hireDate: hireDate ? new Date(hireDate) : now,
         terminationDate: null,
         status: 'ACTIVE',
-        baseSalary: baseSalary ? Number(baseSalary) : null,
+        baseSalary: baseSalary !== undefined && baseSalary !== null && baseSalary !== '' ? parseMoneyInput(baseSalary) : null,
         currency: currency || 'VND',
       },
       qrCode: {
@@ -2318,7 +2339,7 @@ router.post('/positions', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), as
       tenantId: tenantObjectId,
       departmentId: new ObjectId(departmentId),
       name: name.trim(),
-      baseSalary: baseSalary ? Number(baseSalary) : 0,
+      baseSalary: baseSalary !== undefined && baseSalary !== null && baseSalary !== '' ? parseMoneyInput(baseSalary) : 0,
       createdBy: new ObjectId(userId),
       createdAt: now,
       updatedAt: now,
@@ -2391,7 +2412,7 @@ router.put('/positions/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN),
     }
 
     if (baseSalary !== undefined) {
-      updates.baseSalary = Number(baseSalary) || 0;
+      updates.baseSalary = parseMoneyInput(baseSalary);
 
       // Update all employees in this position with new salary
       await db.collection('employees').updateMany(

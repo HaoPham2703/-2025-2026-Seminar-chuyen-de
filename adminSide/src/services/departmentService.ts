@@ -32,8 +32,8 @@ export async function getDepartments(): Promise<Department[]> {
   return response.data?.departments || []
 }
 
-export async function createDepartment(name: string, description?: string): Promise<{ id: string }> {
-  const response = await api.post<{ id: string }>('/admin/departments', { name, description })
+export async function createDepartment(name: string, description?: string, headEmployeeId?: string | null): Promise<{ id: string }> {
+  const response = await api.post<{ id: string }>('/admin/departments', { name, description, headEmployeeId })
   if (!response.success) throw new Error(response.message || 'Failed to create department')
   return response.data!
 }

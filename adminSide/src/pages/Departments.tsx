@@ -1,6 +1,5 @@
 ﻿import { Briefcase, Edit, Plus, Search, Trash2, X } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
-import { adminService } from '../services/adminService'
 import {
   createDepartment,
   deleteDepartment,
@@ -51,6 +50,9 @@ interface FormModalState {
   name: string
   description: string
   headEmployeeId: string | null
+  // Employees of the department being edited (for TP dropdown)
+  deptEmployees: Employee[]
+  deptEmployeesLoading: boolean
   submitting: boolean
   error: string | null
 }
@@ -71,14 +73,13 @@ interface PositionsModalState {
 }
 
 export default function Departments() {
-  //  State: Department List 
+  //  State: Department List
   const [departments, setDepartments] = useState<Department[]>([])
-  const [allEmployees, setAllEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
 
-  //  State: Form Modal 
+  //  State: Form Modal
   const [modal, setModal] = useState<FormModalState>({
     show: false,
     mode: 'create',
@@ -86,6 +87,8 @@ export default function Departments() {
     name: '',
     description: '',
     headEmployeeId: null,
+    deptEmployees: [],
+    deptEmployeesLoading: false,
     submitting: false,
     error: null,
   })
@@ -119,12 +122,8 @@ export default function Departments() {
     try {
       setLoading(true)
       setError(null)
-      const [depts, empData] = await Promise.all([
-        getDepartments().catch(() => []),
-        adminService.getAllEmployees().catch(() => ({ employees: [] })),
-      ])
+      const depts = await getDepartments().catch(() => [])
       setDepartments(depts)
-      setAllEmployees(empData.employees || [])
     } catch (err) {
       if (err instanceof Error) setError(err.message)
       else setError('Failed to load data')
@@ -145,7 +144,7 @@ export default function Departments() {
   const totalEmployees = departments.reduce((sum, d) => sum + d.employeeCount, 0)
   const totalPositions = departments.reduce((sum, d) => sum + (d.positionCount || 0), 0)
 
-  //  Modal Handlers 
+  //  Modal Handlers
   const openCreateModal = () => {
     setModal({
       show: true,
@@ -154,22 +153,47 @@ export default function Departments() {
       name: '',
       description: '',
       headEmployeeId: null,
+      deptEmployees: [],
+      deptEmployeesLoading: false,
       submitting: false,
       error: null,
     })
   }
 
   const openEditModal = (dept: Department) => {
-    setModal({
+    setModal(prev => ({
+      ...prev,
       show: true,
       mode: 'edit',
       dept,
       name: dept.name,
       description: dept.description,
       headEmployeeId: dept.head?._id || null,
+      deptEmployees: [],
+      deptEmployeesLoading: true,
       submitting: false,
       error: null,
-    })
+    }))
+
+    // Fetch employees of this department for the TP dropdown
+    const fetchDeptEmployees = async () => {
+      try {
+        const data = await getDepartmentEmployees(dept._id)
+        setModal(prev => ({
+          ...prev,
+          deptEmployees: data.employees,
+          deptEmployeesLoading: false,
+        }))
+      } catch {
+        setModal(prev => ({
+          ...prev,
+          deptEmployees: [],
+          deptEmployeesLoading: false,
+        }))
+      }
+    }
+
+    fetchDeptEmployees()
   }
 
   const closeModal = () => {
@@ -180,6 +204,8 @@ export default function Departments() {
       name: '',
       description: '',
       headEmployeeId: null,
+      deptEmployees: [],
+      deptEmployeesLoading: false,
       submitting: false,
       error: null,
     })
@@ -198,7 +224,7 @@ export default function Departments() {
       setModal(prev => ({ ...prev, submitting: true }))
 
       if (modal.mode === 'create') {
-        await createDepartment(modal.name, modal.description)
+        await createDepartment(modal.name, modal.description, modal.headEmployeeId)
       } else if (modal.dept) {
         await updateDepartment(
           modal.dept._id,
@@ -280,9 +306,6 @@ export default function Departments() {
       loading: false,
     })
   }
-
-  //  Get available employees for head selection (in this dept only) 
-  const deptEmployeeIds = empModal.employees.map(e => e._id)
 
   const filteredEmployees = empModal.employees.filter(e =>
     e.name.toLowerCase().includes(empModal.searchEmp.toLowerCase()) ||
@@ -458,38 +481,58 @@ export default function Departments() {
                 />
               </div>
 
-              {modal.mode === 'edit' && modal.dept && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Trưởng Phòng</label>
-                  <select
-                    value={modal.headEmployeeId || ''}
-                    onChange={e =>
-                      setModal(prev => ({
-                        ...prev,
-                        headEmployeeId: e.target.value || null,
-                      }))
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={modal.submitting}
-                  >
-                    <option value="">-- Chọn Trưởng Phòng --</option>
-                    {deptEmployeeIds.length === 0 ? (
-                      <option disabled>Không có nhân viên trong phòng</option>
-                    ) : (
-                      allEmployees
-                        .filter(e => deptEmployeeIds.includes(e._id))
-                        .map(e => (
+              {/* Trưởng Phòng - always show, but content depends on mode */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Trưởng Phòng</label>
+
+                {/* CREATE mode: disabled, no dept yet */}
+                {modal.mode === 'create' && (
+                  <>
+                    <select
+                      disabled
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-400 cursor-not-allowed"
+                    >
+                      <option value="">-- Chưa có nhân viên --</option>
+                    </select>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Gán trưởng phòng sau khi tạo phòng ban
+                    </p>
+                  </>
+                )}
+
+                {/* EDIT mode: show employees of this department */}
+                {modal.mode === 'edit' && (
+                  <>
+                    <select
+                      value={modal.headEmployeeId || ''}
+                      onChange={e =>
+                        setModal(prev => ({
+                          ...prev,
+                          headEmployeeId: e.target.value || null,
+                        }))
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={modal.submitting || modal.deptEmployeesLoading}
+                    >
+                      <option value="">-- Chọn Trưởng Phòng --</option>
+                      {modal.deptEmployeesLoading ? (
+                        <option disabled>Đang tải...</option>
+                      ) : modal.deptEmployees.length === 0 ? (
+                        <option disabled>Không có nhân viên trong phòng</option>
+                      ) : (
+                        modal.deptEmployees.map(e => (
                           <option key={e._id} value={e._id}>
                             {e.name} ({e.employeeId})
                           </option>
                         ))
-                    )}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Trưởng phòng phải là nhân viên của phòng ban này
-                  </p>
-                </div>
-              )}
+                      )}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Trưởng phòng phải là nhân viên của phòng ban này
+                    </p>
+                  </>
+                )}
+              </div>
 
               {modal.error && (
                 <div className="p-3 bg-red-100 text-red-700 rounded text-sm">{modal.error}</div>
@@ -628,30 +671,57 @@ export default function Departments() {
       {deletingDept && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 w-full max-w-sm">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Xóa Phòng Ban</h2>
-            <p className="text-gray-600 mb-6">
-              Bạn có chắc muốn xóa phòng ban <strong>{deletingDept.name}</strong>?
-              <br />
-              <span className="text-sm text-gray-500 mt-2 block">
-                (Chỉ có thể xóa nếu không có nhân viên)
-              </span>
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setDeletingDept(null)}
-                className="flex-1 px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-                disabled={modal.submitting}
-              >
-                Hủy
-              </button>
-              <button
-                onClick={handleDelete}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
-                disabled={modal.submitting}
-              >
-                {modal.submitting ? 'Đang xóa...' : 'Xóa'}
-              </button>
-            </div>
+            {/* Blocked: has employees */}
+            {deletingDept.employeeCount > 0 ? (
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                    <span className="text-red-600 text-xl">⚠️</span>
+                  </div>
+                  <h2 className="text-xl font-bold text-gray-900">Không thể xóa</h2>
+                </div>
+                <p className="text-gray-600 mb-2">
+                  Phòng ban <strong>{deletingDept.name}</strong> đang có{' '}
+                  <strong>{deletingDept.employeeCount} nhân viên</strong>.
+                </p>
+                <p className="text-sm text-gray-500 mb-6">
+                  Hãy chuyển hoặc xóa hết nhân viên trước khi xóa phòng ban.
+                </p>
+                <button
+                  onClick={() => setDeletingDept(null)}
+                  className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  Đóng
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Safe to delete */}
+                <h2 className="text-xl font-bold text-gray-900 mb-4">Xóa Phòng Ban</h2>
+                <p className="text-gray-600 mb-6">
+                  Bạn có chắc muốn xóa phòng ban <strong>{deletingDept.name}</strong>?
+                  <br />
+                  <span className="text-sm text-gray-500 mt-2 block">
+                    Hành động này không thể hoàn tác.
+                  </span>
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setDeletingDept(null)}
+                    className="flex-1 px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={modal.submitting}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                  >
+                    {modal.submitting ? 'Đang xóa...' : 'Xóa'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

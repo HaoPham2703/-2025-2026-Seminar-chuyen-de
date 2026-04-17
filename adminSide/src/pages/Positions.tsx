@@ -151,6 +151,16 @@ export default function Positions() {
       return
     }
 
+    // Check duplicate position name within the same department
+    const isDuplicate = positions.some(p => {
+      if (modal.mode === 'edit' && p._id === modal.position?._id) return false
+      return p.departmentId === modal.departmentId && p.name.toLowerCase() === modal.name.trim().toLowerCase()
+    })
+    if (isDuplicate) {
+      setModal(prev => ({ ...prev, error: 'Tên chức vụ đã tồn tại trong phòng ban này' }))
+      return
+    }
+
     const baseSalaryNum = modal.baseSalary ? Number(modal.baseSalary) : 0
     if (baseSalaryNum < 0) {
       setModal(prev => ({ ...prev, error: 'Base salary must be positive' }))
@@ -465,26 +475,57 @@ export default function Positions() {
       {deletingPos && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-sm">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Xóa Chức Vụ</h2>
-            <p className="text-gray-600 mb-6">
-              Bạn có chắc muốn xóa chức vụ <strong>{deletingPos.name}</strong>?
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setDeletingPos(null)}
-                className="flex-1 px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-                disabled={modal.submitting}
-              >
-                Hủy
-              </button>
-              <button
-                onClick={handleDelete}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
-                disabled={modal.submitting}
-              >
-                {modal.submitting ? 'Đang xóa...' : 'Xóa'}
-              </button>
-            </div>
+            {/* Blocked: has employees */}
+            {deletingPos.employeeCount > 0 ? (
+              <>
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                    <span className="text-red-600 text-xl">⚠️</span>
+                  </div>
+                  <h2 className="text-xl font-bold text-gray-900">Không thể xóa</h2>
+                </div>
+                <p className="text-gray-600 mb-2">
+                  Chức vụ <strong>{deletingPos.name}</strong> đang có{' '}
+                  <strong>{deletingPos.employeeCount} nhân viên</strong>.
+                </p>
+                <p className="text-sm text-gray-500 mb-6">
+                  Hãy chuyển hoặc xóa hết nhân viên thuộc chức vụ này trước.
+                </p>
+                <button
+                  onClick={() => setDeletingPos(null)}
+                  className="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  Đóng
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Safe to delete */}
+                <h2 className="text-xl font-bold text-gray-900 mb-4">Xóa Chức Vụ</h2>
+                <p className="text-gray-600 mb-6">
+                  Bạn có chắc muốn xóa chức vụ <strong>{deletingPos.name}</strong>?
+                  <br />
+                  <span className="text-sm text-gray-500 mt-2 block">
+                    Hành động này không thể hoàn tác.
+                  </span>
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setDeletingPos(null)}
+                    className="flex-1 px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={modal.submitting}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                  >
+                    {modal.submitting ? 'Đang xóa...' : 'Xóa'}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -186,7 +186,10 @@ export const adminService = {
   async updateEmployee(id: string, payload: {
     name?: string
     email?: string
+    department?: string
+    departmentId?: string
     position?: string
+    positionId?: string
     phone?: string
   }): Promise<void> {
     await api.put(`/admin/employees/${id}`, payload)
