@@ -12,8 +12,6 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import adminRoutes from './routes/admin.js';
 import attendanceRoutes from './routes/attendance.js';
 import authRoutes from './routes/auth.js';
-import benefitsRoutes from './routes/benefits.js';
-import employeeBenefitsRoutes from './routes/employeeBenefits.js';
 import employeesRoutes from './routes/employees.js';
 import notificationRoutes from './routes/notifications.js';
 import payrollsRoutes from './routes/payrolls.js';
@@ -107,8 +105,6 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/schedules', schedulesRoutes);
 app.use('/api/payrolls', payrollsRoutes);
-app.use('/api/benefits', benefitsRoutes);
-app.use('/api/employee-benefits', employeeBenefitsRoutes);
 
 // Debug: Log registered routes
 console.log('📋 Registered API routes:');
@@ -118,8 +114,6 @@ console.log('  - /api/employees');
 console.log('  - /api/notifications');
 console.log('  - /api/admin (with /dashboard, /employees, /attendance/today, /leave-requests)');
 console.log('  - /api/payrolls');
-console.log('  - /api/benefits');
-console.log('  - /api/employee-benefits');
 
 // 404 handler
 app.use(notFoundHandler);

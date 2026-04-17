@@ -3,7 +3,6 @@ import Layout from './components/Layout'
 import { AuthProvider } from './contexts/AuthContext'
 import { LanguageProvider } from './contexts/LanguageContext'
 import Attendance from './pages/Attendance'
-import Benefits from './pages/Benefits'
 import Dashboard from './pages/Dashboard'
 import Departments from './pages/Departments'
 import Employees from './pages/Employees'
@@ -37,7 +36,6 @@ function App() {
                   <Route path="/schedule" element={<Schedule />} />
                   <Route path="/attendance" element={<Attendance />} />
                   <Route path="/payroll" element={<Payroll />} />
-                  <Route path="/benefits" element={<Benefits />} />
                   <Route path="/leave-requests" element={<LeaveRequests />} />
                   <Route path="/notifications" element={<Notifications />} />
                   <Route path="/rewards" element={<Rewards />} />

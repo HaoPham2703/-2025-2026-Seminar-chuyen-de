@@ -122,7 +122,6 @@ export interface AutoCalcPayrollResponse {
     deductionsTotal: number
     netSalary: number
     components: {
-      benefitsTotal: number
       overtimePay: number
       lateCount: number
       latePenaltyPerLate: number
