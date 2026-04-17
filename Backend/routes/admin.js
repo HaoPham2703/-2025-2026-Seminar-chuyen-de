@@ -1882,11 +1882,48 @@ router.get('/departments', async (req, res, next) => {
       .sort({ name: 1 })
       .toArray();
 
-    const formatted = departments.map(d => ({
-      _id: d._id.toString(),
-      name: d.name,
-      description: d.description || '',
-      employeeCount: 0, // sẽ populate từ employees collection
+    const formatted = await Promise.all(departments.map(async (d) => {
+      // Get employee count
+      const empCount = await db.collection('employees').countDocuments({
+        tenantId: tenantObjectId,
+        $or: [
+          { department: d.name },
+          { 'employment.department': d.name },
+        ],
+      });
+
+      // Get position count
+      const posCount = await db.collection('positions').countDocuments({
+        tenantId: tenantObjectId,
+        departmentId: d._id,
+      });
+
+      // Get department head info
+      let headInfo = null;
+      if (d.headEmployeeId) {
+        const head = await db.collection('employees').findOne({
+          _id: d.headEmployeeId,
+          tenantId: tenantObjectId,
+        });
+        if (head) {
+          headInfo = {
+            _id: head._id.toString(),
+            employeeId: head.employeeId,
+            name: `${head.personalInfo?.firstName || ''} ${head.personalInfo?.lastName || ''}`.trim(),
+            email: head.personalInfo?.email || '',
+            phone: head.personalInfo?.phone || '',
+          };
+        }
+      }
+
+      return {
+        _id: d._id.toString(),
+        name: d.name,
+        description: d.description || '',
+        employeeCount: empCount,
+        positionCount: posCount,
+        head: headInfo,
+      };
     }));
 
     res.json({ success: true, data: { departments: formatted, total: formatted.length } });
@@ -1938,30 +1975,16 @@ router.post('/departments', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), 
 
 /**
  * PUT /api/admin/departments/:id
- * Cập nhật phòng ban
+ * Cập nhật phòng ban (tên, description, trưởng phòng)
+ * Body: { name?, description?, headEmployeeId? }
  */
 router.put('/departments/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
   try {
     const { tenantId } = req.user;
     const { id } = req.params;
-    const { name, description } = req.body;
+    const { name, description, headEmployeeId } = req.body;
     const db = getDatabase();
     const tenantObjectId = new ObjectId(tenantId);
-
-    if (!name || !name.trim()) {
-      return res.status(400).json({ success: false, message: 'Department name is required' });
-    }
-
-    // Check duplicate (exclude self)
-    const existingDup = await db.collection('departments').findOne({
-      tenantId: tenantObjectId,
-      name: { $regex: `^${name.trim()}$`, $options: 'i' },
-      _id: { $ne: new ObjectId(id) },
-    });
-
-    if (existingDup) {
-      return res.status(400).json({ success: false, message: 'Department name already exists' });
-    }
 
     const dept = await db.collection('departments').findOne({
       _id: new ObjectId(id),
@@ -1972,21 +1995,83 @@ router.put('/departments/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN
       return res.status(404).json({ success: false, message: 'Department not found' });
     }
 
+    const updates = { updatedAt: new Date() };
+
+    if (name && name.trim()) {
+      // Check duplicate (exclude self)
+      const existingDup = await db.collection('departments').findOne({
+        tenantId: tenantObjectId,
+        name: { $regex: `^${name.trim()}$`, $options: 'i' },
+        _id: { $ne: new ObjectId(id) },
+      });
+
+      if (existingDup) {
+        return res.status(400).json({ success: false, message: 'Department name already exists' });
+      }
+
+      updates.name = name.trim();
+
+      // Update all employees in old department to new department name
+      await db.collection('employees').updateMany(
+        {
+          tenantId: tenantObjectId,
+          $or: [
+            { department: dept.name },
+            { 'employment.department': dept.name },
+          ],
+        },
+        { $set: { department: name.trim(), 'employment.department': name.trim() } }
+      );
+    }
+
+    if (description !== undefined) {
+      updates.description = description?.trim() || '';
+    }
+
+    // Handle head employee
+    if (headEmployeeId !== undefined) {
+      if (headEmployeeId) {
+        // Verify employee exists and belongs to this department
+        const head = await db.collection('employees').findOne({
+          _id: new ObjectId(headEmployeeId),
+          tenantId: tenantObjectId,
+          $or: [
+            { department: updates.name || dept.name },
+            { 'employment.department': updates.name || dept.name },
+          ],
+        });
+
+        if (!head) {
+          return res.status(400).json({
+            success: false,
+            message: 'Employee not found or does not belong to this department',
+          });
+        }
+
+        // Check if this employee is already head of another department
+        const otherHead = await db.collection('departments').findOne({
+          tenantId: tenantObjectId,
+          _id: { $ne: new ObjectId(id) },
+          headEmployeeId: new ObjectId(headEmployeeId),
+        });
+
+        if (otherHead) {
+          return res.status(400).json({
+            success: false,
+            message: 'Employee is already head of another department',
+          });
+        }
+
+        updates.headEmployeeId = new ObjectId(headEmployeeId);
+      } else {
+        // Clear head
+        updates.headEmployeeId = null;
+      }
+    }
+
     await db.collection('departments').updateOne(
       { _id: new ObjectId(id) },
-      { $set: { name: name.trim(), description: description?.trim() || '', updatedAt: new Date() } }
-    );
-
-    // Update all employees in old department to new department name
-    await db.collection('employees').updateMany(
-      {
-        tenantId: tenantObjectId,
-        $or: [
-          { department: dept.name },
-          { 'employment.department': dept.name },
-        ],
-      },
-      { $set: { department: name.trim(), 'employment.department': name.trim() } }
+      { $set: updates }
     );
 
     res.json({ success: true });
@@ -2128,6 +2213,338 @@ router.patch('/departments/:id/employees', requireRole(ROLES.TENANT_ADMIN, ROLES
     }
 
     res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ─────────────────────────────────────────────
+// POSITIONS (CRUD)
+// ─────────────────────────────────────────────
+
+/**
+ * GET /api/admin/positions
+ * Lấy danh sách tất cả chức vụ của tenant
+ * Query: departmentId? (optional filter by department)
+ */
+router.get('/positions', async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { departmentId } = req.query;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const query = { tenantId: tenantObjectId };
+    if (departmentId) {
+      query.departmentId = new ObjectId(departmentId);
+    }
+
+    const positions = await db.collection('positions')
+      .find(query)
+      .sort({ name: 1 })
+      .toArray();
+
+    // Get employee count per position
+    const formatted = await Promise.all(positions.map(async (pos) => {
+      const empCount = await db.collection('employees').countDocuments({
+        tenantId: tenantObjectId,
+        $or: [
+          { position: pos.name },
+          { 'employment.position': pos.name },
+        ],
+      });
+
+      const dept = await db.collection('departments').findOne({ _id: pos.departmentId });
+
+      return {
+        _id: pos._id.toString(),
+        name: pos.name,
+        departmentId: pos.departmentId.toString(),
+        departmentName: dept?.name || 'N/A',
+        baseSalary: pos.baseSalary || 0,
+        employeeCount: empCount,
+      };
+    }));
+
+    res.json({ success: true, data: { positions: formatted, total: formatted.length } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/admin/positions
+ * Tạo chức vụ mới
+ * Body: { name, departmentId, baseSalary }
+ */
+router.post('/positions', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId, userId } = req.user;
+    const { name, departmentId, baseSalary } = req.body;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Position name is required' });
+    }
+
+    if (!departmentId) {
+      return res.status(400).json({ success: false, message: 'Department is required' });
+    }
+
+    // Check if department exists
+    const dept = await db.collection('departments').findOne({
+      _id: new ObjectId(departmentId),
+      tenantId: tenantObjectId,
+    });
+
+    if (!dept) {
+      return res.status(404).json({ success: false, message: 'Department not found' });
+    }
+
+    // Check for duplicate position name in same department
+    const existing = await db.collection('positions').findOne({
+      tenantId: tenantObjectId,
+      departmentId: new ObjectId(departmentId),
+      name: { $regex: `^${name.trim()}$`, $options: 'i' },
+    });
+
+    if (existing) {
+      return res.status(400).json({ success: false, message: 'Position name already exists in this department' });
+    }
+
+    const now = new Date();
+    const result = await db.collection('positions').insertOne({
+      tenantId: tenantObjectId,
+      departmentId: new ObjectId(departmentId),
+      name: name.trim(),
+      baseSalary: baseSalary ? Number(baseSalary) : 0,
+      createdBy: new ObjectId(userId),
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    res.status(201).json({ success: true, data: { id: result.insertedId.toString() } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/admin/positions/:id
+ * Cập nhật chức vụ (tên, lương cơ bản, phòng ban)
+ * Nếu cập nhật lương → cập nhật lương của tất cả nhân viên trong chức vụ đó
+ */
+router.put('/positions/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { id } = req.params;
+    const { name, departmentId, baseSalary } = req.body;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const position = await db.collection('positions').findOne({
+      _id: new ObjectId(id),
+      tenantId: tenantObjectId,
+    });
+
+    if (!position) {
+      return res.status(404).json({ success: false, message: 'Position not found' });
+    }
+
+    const updates = { updatedAt: new Date() };
+
+    if (name && name.trim()) {
+      // Check duplicate (exclude self)
+      const dupQuery = {
+        tenantId: tenantObjectId,
+        departmentId: position.departmentId,
+        name: { $regex: `^${name.trim()}$`, $options: 'i' },
+        _id: { $ne: new ObjectId(id) },
+      };
+
+      // If changing department, check duplicates in new department
+      if (departmentId && departmentId !== position.departmentId.toString()) {
+        dupQuery.departmentId = new ObjectId(departmentId);
+      }
+
+      const dup = await db.collection('positions').findOne(dupQuery);
+      if (dup) {
+        return res.status(400).json({ success: false, message: 'Position name already exists in this department' });
+      }
+
+      updates.name = name.trim();
+    }
+
+    if (departmentId && departmentId !== position.departmentId.toString()) {
+      // Verify new department exists
+      const newDept = await db.collection('departments').findOne({
+        _id: new ObjectId(departmentId),
+        tenantId: tenantObjectId,
+      });
+
+      if (!newDept) {
+        return res.status(404).json({ success: false, message: 'New department not found' });
+      }
+
+      updates.departmentId = new ObjectId(departmentId);
+    }
+
+    if (baseSalary !== undefined) {
+      updates.baseSalary = Number(baseSalary) || 0;
+
+      // Update all employees in this position with new salary
+      await db.collection('employees').updateMany(
+        {
+          tenantId: tenantObjectId,
+          $or: [
+            { position: position.name },
+            { 'employment.position': position.name },
+          ],
+        },
+        {
+          $set: {
+            baseSalary: updates.baseSalary,
+            'employment.baseSalary': updates.baseSalary,
+          },
+        }
+      );
+    }
+
+    await db.collection('positions').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updates }
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/admin/positions/:id
+ * Xóa chức vụ — chỉ xóa được nếu không có nhân viên
+ */
+router.delete('/positions/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { id } = req.params;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const position = await db.collection('positions').findOne({
+      _id: new ObjectId(id),
+      tenantId: tenantObjectId,
+    });
+
+    if (!position) {
+      return res.status(404).json({ success: false, message: 'Position not found' });
+    }
+
+    // Check if position has employees
+    const employeeCount = await db.collection('employees').countDocuments({
+      tenantId: tenantObjectId,
+      $or: [
+        { position: position.name },
+        { 'employment.position': position.name },
+      ],
+    });
+
+    if (employeeCount > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot delete position with ${employeeCount} employee(s). Please remove employees first.`,
+      });
+    }
+
+    await db.collection('positions').deleteOne({ _id: new ObjectId(id) });
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/admin/positions/:id/employees
+ * Lấy danh sách nhân viên trong 1 chức vụ
+ */
+router.get('/positions/:id/employees', async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { id } = req.params;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const position = await db.collection('positions').findOne({
+      _id: new ObjectId(id),
+      tenantId: tenantObjectId,
+    });
+
+    if (!position) {
+      return res.status(404).json({ success: false, message: 'Position not found' });
+    }
+
+    const employees = await db.collection('employees').find({
+      tenantId: tenantObjectId,
+      $or: [
+        { position: position.name },
+        { 'employment.position': position.name },
+      ],
+    }).toArray();
+
+    const formatted = employees.map(emp => ({
+      _id: emp._id.toString(),
+      employeeId: emp.employeeId || '',
+      name: `${emp.personalInfo?.firstName || ''} ${emp.personalInfo?.lastName || ''}`.trim(),
+      email: emp.personalInfo?.email || '',
+      department: emp.department || emp.employment?.department || 'N/A',
+      position: emp.position || emp.employment?.position || position.name,
+      phone: emp.personalInfo?.phone || '',
+      baseSalary: emp.baseSalary || emp.employment?.baseSalary || position.baseSalary || 0,
+    }));
+
+    res.json({ success: true, data: { employees: formatted, total: formatted.length, position: position.name } });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/admin/departments/:deptId/positions
+ * Lấy danh sách chức vụ trong 1 phòng ban
+ */
+router.get('/departments/:deptId/positions', async (req, res, next) => {
+  try {
+    const { tenantId } = req.user;
+    const { deptId } = req.params;
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+
+    const dept = await db.collection('departments').findOne({
+      _id: new ObjectId(deptId),
+      tenantId: tenantObjectId,
+    });
+
+    if (!dept) {
+      return res.status(404).json({ success: false, message: 'Department not found' });
+    }
+
+    const positions = await db.collection('positions')
+      .find({
+        tenantId: tenantObjectId,
+        departmentId: new ObjectId(deptId),
+      })
+      .sort({ name: 1 })
+      .toArray();
+
+    const formatted = await Promise.all(positions.map(async (pos) => ({
+      _id: pos._id.toString(),
+      name: pos.name,
+      baseSalary: pos.baseSalary || 0,
+    })));
+
+    res.json({ success: true, data: { positions: formatted, total: formatted.length } });
   } catch (error) {
     next(error);
   }
