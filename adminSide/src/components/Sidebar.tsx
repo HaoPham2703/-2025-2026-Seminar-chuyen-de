@@ -1,17 +1,18 @@
 import {
-  Award,
-  Bell,
-  Briefcase,
-  Building2,
-  Calendar,
-  ClipboardList,
-  Clock,
-  DollarSign,
-  FileText,
-  HelpCircle,
-  LayoutDashboard,
-  Settings,
-  Users
+    Award,
+    Bell,
+    Briefcase,
+    Building2,
+    Calendar,
+    ClipboardList,
+    Clock,
+    DollarSign,
+    FileText,
+    Gift,
+    HelpCircle,
+    LayoutDashboard,
+    Settings,
+    Users
 } from 'lucide-react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -42,6 +43,7 @@ const menuItems = [
   { path: '/schedule', icon: Calendar, labelKey: 'nav.schedule' },
   { path: '/attendance', icon: Clock, labelKey: 'nav.attendance' },
   { path: '/payroll', icon: DollarSign, labelKey: 'nav.payroll' },
+  { path: '/benefits', icon: Gift, labelKey: 'nav.benefits' },
   { path: '/leave-requests', icon: ClipboardList, labelKey: 'nav.leaveRequests' },
   { path: '/notifications', icon: Bell, labelKey: 'nav.notifications' },
   { path: '/rewards', icon: Award, labelKey: 'rewards.title' },

@@ -77,3 +77,8 @@ export const employeeService = {
     return response.data!
   },
 }
+
+export async function getEmployees(): Promise<Employee[]> {
+  const response = await api.get<{ employees: Employee[] }>('/employees')
+  return response.data?.employees || []
+}

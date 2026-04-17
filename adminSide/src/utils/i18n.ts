@@ -91,6 +91,10 @@ const translations: Translations = {
     vi: 'Lương',
     en: 'Payroll',
   },
+  'nav.benefits': {
+    vi: 'Phúc lợi',
+    en: 'Benefits',
+  },
   'nav.leaveRequests': {
     vi: 'Nghỉ phép',
     en: 'Leave Requests',

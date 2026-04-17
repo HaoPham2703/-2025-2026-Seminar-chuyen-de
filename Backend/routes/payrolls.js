@@ -342,7 +342,49 @@ router.post('/auto-calculate', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN
     const bhxh = roundMoney(monthlyBaseSalary * effectiveFormula.bhxhRate);
     const pit = roundMoney(monthlyBaseSalary * effectiveFormula.pitRate);
 
+    // Lấy phúc lợi của nhân viên
+    const now = new Date();
+    const employeeBenefitsRows = await db.collection('employeeBenefits').find({
+      tenantId: tenantObjectId,
+      employeeId: employeeObjectId,
+      startDate: { $lte: now },
+      $or: [
+        { endDate: { $gt: now } },
+        { endDate: null },
+        { endDate: { $exists: false } },
+      ],
+    }).toArray();
+
+    // Lấy thông tin phúc lợi
+    const benefitIds = employeeBenefitsRows.map((eb) => eb.benefitId);
+    const benefitsData = await db
+      .collection('benefits')
+      .find({ _id: { $in: benefitIds } })
+      .toArray();
+    const benefitMap = Object.fromEntries(benefitsData.map((b) => [b._id.toString(), b]));
+
+    // Tính tổng phúc lợi
+    const benefitsArray = employeeBenefitsRows
+      .map((eb) => {
+        const benefit = benefitMap[eb.benefitId.toString()];
+        if (!benefit) return null;
+        
+        let amount = benefit.value;
+        if (benefit.type === 'percent') {
+          amount = roundMoney(monthlyBaseSalary * (benefit.value / 100));
+        }
+        
+        return {
+          name: benefit.name,
+          amount: amount,
+        };
+      })
+      .filter(Boolean);
+
+    const benefitsTotal = sumAmount(benefitsArray);
+
     const allowances = [
+      ...benefitsArray,
       ...(overtimePay > 0 ? [{ name: 'Tăng ca', amount: overtimePay }] : []),
       ...(rewardAmount > 0 ? [{ name: 'Thưởng', amount: rewardAmount }] : []),
     ];
@@ -382,6 +424,7 @@ router.post('/auto-calculate', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN
           deductionsTotal,
           netSalary,
           components: {
+            benefitsTotal,
             overtimePay,
             lateCount,
             absentCount,
