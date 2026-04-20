@@ -1,4 +1,4 @@
-import { Bell, Calendar, Plus, Search, Globe } from 'lucide-react'
+import { Calendar, Globe, Search } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
@@ -20,12 +20,6 @@ export default function Header() {
   const handleSchedule = () => {
     console.log('🔵 Header: Schedule clicked')
     navigate('/schedule')
-  }
-
-  const handleCreateRequest = () => {
-    console.log('🔵 Header: Create Request clicked')
-    // TODO: Mở modal tạo request
-    alert('Create Request feature coming soon!')
   }
 
   const handleSearch = (e: React.FormEvent) => {
@@ -93,26 +87,11 @@ export default function Header() {
           )}
           <button 
             type="button"
-            className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer relative"
-          >
-            <Bell size={20} />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-          </button>
-          <button 
-            type="button"
             onClick={handleSchedule}
             className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
           >
             <Calendar size={20} />
             <span className="font-medium">{t('common.schedule')}</span>
-          </button>
-          <button 
-            type="button"
-            onClick={handleCreateRequest}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium cursor-pointer"
-          >
-            <Plus size={20} />
-            {t('common.createRequest')}
           </button>
           <button
             type="button"

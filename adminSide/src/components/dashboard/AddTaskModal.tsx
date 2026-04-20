@@ -93,15 +93,41 @@ export default function AddTaskModal({ isOpen, onClose, onAdd }: AddTaskModalPro
             <label className="block text-sm font-medium text-gray-700 mb-1">
               {t('task.tag') || 'Tag'}
             </label>
-            <select
-              value={tag}
-              onChange={(e) => setTag(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-            >
-              <option value="">{t('common.optional')}</option>
-              <option value="recruitment">{t('dashboard.recruitment')}</option>
-              <option value="important">{t('dashboard.important')}</option>
-            </select>
+            <div className="flex gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setTag('')}
+                className={`px-3 py-1 rounded-full text-xs border cursor-pointer transition-colors ${
+                  !tag
+                    ? 'bg-gray-100 text-gray-400 border-gray-200'
+                    : 'bg-gray-50 text-gray-500 border-gray-200'
+                }`}
+              >
+                Không có
+              </button>
+              <button
+                type="button"
+                onClick={() => setTag(tag === 'recruitment' ? '' : 'recruitment')}
+                className={`px-3 py-1 rounded-full text-xs border cursor-pointer transition-colors ${
+                  tag === 'recruitment'
+                    ? 'bg-blue-100 text-blue-700 border-blue-300'
+                    : 'bg-gray-50 text-gray-500 border-gray-200'
+                }`}
+              >
+                {t('dashboard.recruitment')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setTag(tag === 'important' ? '' : 'important')}
+                className={`px-3 py-1 rounded-full text-xs border cursor-pointer transition-colors ${
+                  tag === 'important'
+                    ? 'bg-purple-100 text-purple-700 border-purple-300'
+                    : 'bg-gray-50 text-gray-500 border-gray-200'
+                }`}
+              >
+                {t('dashboard.important')}
+              </button>
+            </div>
           </div>
 
           <div>

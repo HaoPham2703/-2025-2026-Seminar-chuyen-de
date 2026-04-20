@@ -1,5 +1,5 @@
-import { Plus, Check } from 'lucide-react'
-import { useState } from 'react'
+import { Check, Plus } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { t } from '../../utils/i18n'
 import AddTaskModal from './AddTaskModal'
 
@@ -42,9 +42,22 @@ const tasks: Task[] = [
   },
 ]
 
+const STORAGE_KEY = 'dashboard_tasks'
+
 export default function TasksCard() {
-  const [taskList, setTaskList] = useState(tasks)
+  const [taskList, setTaskList] = useState<Task[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      return saved ? (JSON.parse(saved) as Task[]) : tasks
+    } catch {
+      return tasks
+    }
+  })
   const [showAddModal, setShowAddModal] = useState(false)
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(taskList))
+  }, [taskList])
 
   const handleToggleTask = (taskId: string) => {
     console.log('🔵 TasksCard: Toggle task', taskId)

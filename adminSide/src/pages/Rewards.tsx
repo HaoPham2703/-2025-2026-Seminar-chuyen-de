@@ -1,28 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { t } from '../utils/i18n'
 import { useLanguage } from '../contexts/LanguageContext'
 import { adminService, type Employee } from '../services/adminService'
 import {
-  getRewards,
-  createReward,
-  updateRewardStatus,
-  getDisciplines,
-  createDiscipline,
-  updateDisciplineStatus,
-  getRewardRule,
-  saveRewardRule,
-  getAutoCalcPreview,
-  runAutoReward,
-  REWARD_STATUS_COLORS,
-  DISCIPLINE_TYPE_COLORS,
-  DISCIPLINE_TYPE_LABELS,
-  DISCIPLINE_STATUS_COLORS,
-  type Reward,
-  type Discipline,
-  type RewardRule,
-  type RewardType,
-  type DisciplineType,
+    createDiscipline,
+    createReward,
+    DISCIPLINE_STATUS_COLORS,
+    DISCIPLINE_TYPE_COLORS,
+    DISCIPLINE_TYPE_LABELS,
+    getAutoCalcPreview,
+    getDisciplines,
+    getRewardRule,
+    getRewards,
+    REWARD_STATUS_COLORS,
+    runAutoReward,
+    saveRewardRule,
+    updateDisciplineStatus,
+    updateRewardStatus,
+    type Discipline,
+    type DisciplineType,
+    type Reward,
+    type RewardRule,
+    type RewardType,
 } from '../services/rewardService'
+import { t } from '../utils/i18n'
 
 const MONTHS_VI = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12']
 const MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -742,7 +742,7 @@ export default function Rewards() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">{t('rewards.itemName')}</label>
                   <input type="text" value={rItem} onChange={e => setRItem(e.target.value)}
-                    placeholder="VD: Bã mía, Voucher 200k..."
+                    placeholder="VD: Phiếu quà tặng, Voucher ăn trưa..."
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               )}
@@ -754,12 +754,14 @@ export default function Rewards() {
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               )}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{t('rewards.description')}</label>
-                <textarea value={rDesc} onChange={e => setRDesc(e.target.value)} rows={2}
-                  placeholder="Mô tả thêm (tùy chọn)..."
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
+              {rType === 'MONEY' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('rewards.description')}</label>
+                  <textarea value={rDesc} onChange={e => setRDesc(e.target.value)} rows={2}
+                    placeholder="Mô tả thêm (tùy chọn)..."
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              )}
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowRewardModal(false)}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors cursor-pointer">

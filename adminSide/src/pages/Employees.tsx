@@ -3,14 +3,6 @@ import { useEffect, useState } from 'react'
 import { adminService, type Employee } from '../services/adminService'
 import { getPositionsByDepartment } from '../services/positionService'
 
-const EMPLOYMENT_TYPES = [
-  { value: 'FULL_TIME', labelVi: 'Toàn thời gian', labelEn: 'Full-time' },
-  { value: 'PART_TIME', labelVi: 'Bán thời gian', labelEn: 'Part-time' },
-  { value: 'CONTRACT', labelVi: 'Hợp đồng', labelEn: 'Contract' },
-  { value: 'INTERN', labelVi: 'Thực tập sinh', labelEn: 'Intern' },
-  { value: 'PROBATION', labelVi: 'Thử việc', labelEn: 'Probation' },
-]
-
 const GENDERS = [
   { value: 'MALE', labelVi: 'Nam', labelEn: 'Male' },
   { value: 'FEMALE', labelVi: 'Nữ', labelEn: 'Female' },
@@ -41,7 +33,6 @@ interface CreateFormData {
   departmentId: string
   position: string
   positionId: string
-  employmentType: string
   hireDate: string
   baseSalary: string
   street: string
@@ -65,7 +56,6 @@ const emptyForm = (): CreateFormData => ({
   departmentId: '',
   position: '',
   positionId: '',
-  employmentType: 'FULL_TIME',
   hireDate: new Date().toISOString().split('T')[0],
   baseSalary: '',
   street: '',
@@ -202,7 +192,6 @@ export default function Employees() {
       departmentId: '',
       position: emp.position || '',
       positionId: '', // will be set after positions load
-      employmentType: 'FULL_TIME',
       hireDate: new Date().toISOString().split('T')[0],
       baseSalary: '',
       street: '',
@@ -295,7 +284,6 @@ export default function Employees() {
           gender: formData.gender || undefined,
           department: formData.department,
           position: formData.position,
-          employmentType: formData.employmentType,
           hireDate: formData.hireDate || undefined,
           baseSalary: formData.baseSalary ? Number(formData.baseSalary) : undefined,
           street: formData.street,
@@ -669,7 +657,7 @@ export default function Employees() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div className="grid grid-cols-1 gap-3 mt-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Chức vụ <span className="text-red-500">*</span></label>
                       <select value={formData.positionId} onChange={e => handlePositionChange(e.target.value)}
@@ -686,15 +674,6 @@ export default function Employees() {
                       {formData.department && positions.length === 0 && (
                         <p className="text-xs text-orange-500 mt-1">Phòng ban này chưa có chức vụ nào</p>
                       )}
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Loại hợp đồng</label>
-                      <select value={formData.employmentType} onChange={e => setField('employmentType', e.target.value)}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer">
-                        {EMPLOYMENT_TYPES.map(t => (
-                          <option key={t.value} value={t.value}>{t.labelVi}</option>
-                        ))}
-                      </select>
                     </div>
                   </div>
 
