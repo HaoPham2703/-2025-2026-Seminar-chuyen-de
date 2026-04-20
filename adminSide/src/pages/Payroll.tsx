@@ -9,11 +9,13 @@ import {
 import {
     autoCalculatePayroll,
     createPayroll,
+    createBulkPayroll,
     deletePayrolls,
     getAllPayrolls,
     getEmployeeOptions,
     revisePayroll,
     updatePayroll,
+    type BulkPayrollResult,
     type EmployeeOption,
     type Payroll,
 } from '../services/payrollService'
@@ -122,6 +124,15 @@ export default function Payroll() {
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showFilterDropdown])
+
+  // Tự động điền lương cơ bản khi chọn nhân viên
+  useEffect(() => {
+    if (!showModal || modalMode !== 'create' || !formEmployee) return
+    const emp = employees.find(e => e.id === formEmployee)
+    if (emp?.positionSalary) {
+      setFormBaseSalary(String(emp.positionSalary))
+    }
+  }, [formEmployee, modalMode, showModal])
 
   // Tự động tính khi đã chọn đủ: nhân viên + tháng + năm (chỉ ở mode create, không lặp)
   useEffect(() => {
@@ -544,18 +555,14 @@ export default function Payroll() {
         .filter((d) => d.name && d.amount)
         .map((d) => ({ name: d.name, amount: parseFloat(d.amount) }))
 
-      await Promise.all(
-        targetEmployeeIds.map((employeeId) =>
-          createPayroll({
-            employeeId,
-            period: { month: formMonth, year: formYear },
-            baseSalary: parseFloat(formBaseSalary),
-            allowances,
-            deductions,
-            status: formStatus,
-          })
-        )
-      )
+      const result: BulkPayrollResult = await createBulkPayroll({
+        employeeIds: targetEmployeeIds,
+        period: { month: formMonth, year: formYear },
+        baseSalary: parseFloat(formBaseSalary),
+        allowances,
+        deductions,
+        status: formStatus,
+      })
 
       setShowModal(false)
       resetForm()
@@ -563,6 +570,13 @@ export default function Payroll() {
       setSelectedDepartment('')
       setDepartmentEmployees([])
       await loadData()
+
+      if (result.failed > 0) {
+        const reasons = result.details.map(d => `${d.employeeId}: ${d.reason}`).join('\n')
+        alert(`Đã tạo ${result.created}/${targetEmployeeIds.length} phiếu lương.\n\nKhông thể tạo:\n${reasons}`)
+      } else {
+        alert(`Đã tạo thành công ${result.created} phiếu lương!`)
+      }
     } catch (err: any) {
       alert(err.message || 'Không thể tạo phiếu lương hàng loạt')
     } finally {
@@ -712,7 +726,6 @@ export default function Payroll() {
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">-- {t('common.all') || 'Tất cả'} --</option>
-                <option value="APPROVED">{t('payroll.approved') || 'Đã duyệt'}</option>
                 <option value="PENDING">{t('payroll.pending') || 'Chờ duyệt'}</option>
                 <option value="DRAFT">{t('payroll.draft') || 'Nháp'}</option>
               </select>
@@ -841,6 +854,14 @@ export default function Payroll() {
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800 flex items-start gap-2 mb-4">
+                <span className="text-amber-500 mt-0.5">ℹ️</span>
+                <span>
+                  <strong>Lưu ý:</strong> Mỗi nhân viên chỉ có thể có <strong>1 phiếu lương mỗi tháng</strong>.
+                  Nếu cần điều chỉnh phiếu đã duyệt, dùng nút <strong>"Điều chỉnh"</strong> để tạo phiên bản mới + audit log.
+                </span>
+              </div>
+
               <div className="flex justify-end gap-2">
                 {modalMode === 'bulkCreate' && (
                   <button
@@ -1019,61 +1040,39 @@ export default function Payroll() {
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-gray-700">{t('payroll.allowances') || 'Phụ cấp'}</label>
-                  <button type="button" onClick={handleAddAllowance} className="text-xs text-blue-600 hover:text-blue-800 cursor-pointer">+ {t('common.add') || 'Thêm'}</button>
-                </div>
-                {formAllowances.map((a, i) => (
-                  <div key={i} className="flex gap-2 mb-2">
-                    <input
-                      type="text"
-                      value={a.name}
-                      onChange={(e) => handleAllowanceChange(i, 'name', e.target.value)}
-                      placeholder={t('payroll.itemName') || 'Tên phụ cấp'}
-                      className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <input
-                      type="number"
-                      value={a.amount}
-                      onChange={(e) => handleAllowanceChange(i, 'amount', e.target.value)}
-                      placeholder="VND"
-                      min="0"
-                      className="w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    {formAllowances.length > 1 && (
-                      <button type="button" onClick={() => handleRemoveAllowance(i)} className="text-red-500 text-sm px-2 cursor-pointer">✕</button>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {t('payroll.allowances') || 'Phụ cấp'} (tự động từ tính lương)
+                </label>
+                {autoCalcSummary ? (
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                    {formAllowances.filter(a => a.name && a.amount).length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Phụ cấp</p>
+                        {formAllowances.filter(a => a.name && a.amount).map((a, i) => (
+                          <div key={i} className="flex justify-between text-sm">
+                            <span className="text-gray-700">{a.name}</span>
+                            <span className="text-green-600 font-medium">+{formatCurrency(parseFloat(a.amount), language)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {formDeductions.filter(d => d.name && d.amount).length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Khấu trừ</p>
+                        {formDeductions.filter(d => d.name && d.amount).map((d, i) => (
+                          <div key={i} className="flex justify-between text-sm">
+                            <span className="text-gray-700">{d.name}</span>
+                            <span className="text-red-500 font-medium">-{formatCurrency(parseFloat(d.amount), language)}</span>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
-                ))}
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-medium text-gray-700">{t('payroll.deductions') || 'Khấu trừ'}</label>
-                  <button type="button" onClick={handleAddDeduction} className="text-xs text-blue-600 hover:text-blue-800 cursor-pointer">+ {t('common.add') || 'Thêm'}</button>
-                </div>
-                {formDeductions.map((d, i) => (
-                  <div key={i} className="flex gap-2 mb-2">
-                    <input
-                      type="text"
-                      value={d.name}
-                      onChange={(e) => handleDeductionChange(i, 'name', e.target.value)}
-                      placeholder={t('payroll.itemName') || 'Tên khấu trừ'}
-                      className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <input
-                      type="number"
-                      value={d.amount}
-                      onChange={(e) => handleDeductionChange(i, 'amount', e.target.value)}
-                      placeholder="VND"
-                      min="0"
-                      className="w-32 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    {formDeductions.length > 1 && (
-                      <button type="button" onClick={() => handleRemoveDeduction(i)} className="text-red-500 text-sm px-2 cursor-pointer">✕</button>
-                    )}
-                  </div>
-                ))}
+                ) : (
+                  <p className="text-sm text-gray-400 italic py-4 text-center">
+                    Nhấn "Tính tự động" sau khi chọn nhân viên để xem phụ cấp/khấu trừ
+                  </p>
+                )}
               </div>
 
               <div>

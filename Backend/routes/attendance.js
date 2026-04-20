@@ -90,8 +90,7 @@ function sanitizeAttendanceRecord(record) {
 router.post('/clock-in', async (req, res, next) => {
   try {
     const { employeeId, location, qrCode, method = 'MOBILE_APP' } = req.body;
-    const requiresQrValidation = method === 'QR_SCAN';
-    const { tenantId } = req.user;
+    const { tenantId, userId } = req.user;
 
     if (!employeeId) {
       return res.status(400).json({
@@ -99,6 +98,12 @@ router.post('/clock-in', async (req, res, next) => {
         message: 'Employee ID is required'
       });
     }
+
+    // ── Kiểm tra role: TENANT_ADMIN/SUPER_ADMIN không cần QR validation ──
+    const userRole = req.user?.role || (await getDatabase().collection('users')
+      .findOne({ _id: new ObjectId(userId) }, { projection: { role: 1 } }))?.role
+    const isManager = ['TENANT_ADMIN', 'SUPER_ADMIN'].includes(userRole)
+    const requiresQrValidation = method === 'QR_SCAN' && !isManager
 
     const db = getDatabase();
     const employeeObjectId = new ObjectId(employeeId);
@@ -283,8 +288,13 @@ router.post('/clock-in', async (req, res, next) => {
 router.post('/clock-out', async (req, res, next) => {
   try {
     const { employeeId, location, qrCode, method = 'MOBILE_APP' } = req.body;
-    const { tenantId } = req.user;
-    const requiresQrValidation = method === 'QR_SCAN';
+    const { tenantId, userId } = req.user;
+
+    // ── Kiểm tra role: TENANT_ADMIN/SUPER_ADMIN không cần QR validation ──
+    const userRole = req.user?.role || (await getDatabase().collection('users')
+      .findOne({ _id: new ObjectId(userId) }, { projection: { role: 1 } }))?.role
+    const isManager = ['TENANT_ADMIN', 'SUPER_ADMIN'].includes(userRole)
+    const requiresQrValidation = method === 'QR_SCAN' && !isManager
 
     if (!employeeId) {
       return res.status(400).json({

@@ -132,6 +132,9 @@ export default function Reports() {
           <p className="text-gray-600 mt-1">
             {t('reports.summary') || 'Summary and Analytics'}
           </p>
+          <p className="text-gray-400 text-xs mt-1">
+            ⚠️ Mỗi nhân viên chỉ có một phiếu lương mỗi tháng.
+          </p>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">

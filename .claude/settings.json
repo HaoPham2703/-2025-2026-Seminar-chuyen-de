@@ -1,7 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "Read(//c/Users/HaoPham/Desktop/cnpm/**)"
+      "Read(//c/Users/HaoPham/Desktop/cnpm/**)",
+      "Read(//Users/HaoPham/HRMuv/Backend/**)",
+      "Read(//d/Users/HaoPham/HRMuv/Backend/**)",
+      "Read(//Users/HaoPham/Desktop/Work/Native/NativePro/adminSide/src/components/**)",
+      "Read(//d/Users/HaoPham/Desktop/Work/Native/NativePro/adminSide/src/components/**)",
+      "Read(//Users/HaoPham/Desktop/Work/Native/NativePro/adminSide/src/pages/**)",
+      "Read(//d/Users/HaoPham/Desktop/Work/Native/NativePro/adminSide/src/pages/**)"
+    ],
+    "additionalDirectories": [
+      "d:\\Project\\DACN\\MobileClient\\codeZoneMobile"
     ]
   }
 }

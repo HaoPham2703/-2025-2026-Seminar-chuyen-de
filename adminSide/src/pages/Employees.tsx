@@ -460,34 +460,58 @@ export default function Employees() {
               </button>
             </div>
 
-            <div className="p-6 space-y-5">
-              {/* Contact */}
+            <div className="p-6 space-y-6">
+              {/* Personal Info */}
               <div>
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Liên hệ</h3>
-                <div className="space-y-2">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Thông tin cá nhân</h3>
+                <div className="grid grid-cols-2 gap-3">
                   {[
-                    { label: 'Email', value: detailEmployee.email },
-                    { label: 'Điện thoại', value: detailEmployee.phone || '—' },
+                    {label:'Mã NV', value:detailEmployee.employeeId},
+                    {label:'Email', value:detailEmployee.email},
+                    {label:'Điện thoại', value:detailEmployee.phone||'—'},
+                    {label:'Ngày sinh', value:detailEmployee.dateOfBirth||'—'},
+                    {label:'Giới tính', value:detailEmployee.gender||'—'},
+                    {label:'Địa chỉ', value:[detailEmployee.street,detailEmployee.city,detailEmployee.province].filter(Boolean).join(', ')||'—'},
                   ].map(row => (
-                    <div key={row.label} className="flex items-center gap-3">
-                      <span className="text-xs text-gray-400 w-28">{row.label}</span>
-                      <span className="text-sm text-gray-900">{row.value}</span>
+                    <div key={row.label}>
+                      <p className="text-xs text-gray-400 mb-0.5">{row.label}</p>
+                      <p className="text-sm font-medium text-gray-900">{row.value}</p>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Employment */}
+              {/* Employment Info */}
               <div>
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Công việc</h3>
-                <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-3">
                   {[
-                    { label: 'Chức vụ', value: detailEmployee.position || '—' },
-                    { label: 'Phòng ban', value: detailEmployee.department || 'Chưa phân phòng' },
+                    {label:'Chức vụ', value:detailEmployee.position||'—'},
+                    {label:'Phòng ban', value:detailEmployee.department||'Chưa phân phòng'},
+                    {label:'Lương cơ bản', value:detailEmployee.baseSalary?formatVND(detailEmployee.baseSalary):'—'},
+                    {label:'Trạng thái', value:detailEmployee.status||'ACTIVE'},
+                    {label:'Ngày vào', value:detailEmployee.hireDate||'—'},
                   ].map(row => (
-                    <div key={row.label} className="flex items-center gap-3">
-                      <span className="text-xs text-gray-400 w-28">{row.label}</span>
-                      <span className="text-sm text-gray-900">{row.value}</span>
+                    <div key={row.label}>
+                      <p className="text-xs text-gray-400 mb-0.5">{row.label}</p>
+                      <p className="text-sm font-medium text-gray-900">{row.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Statistics */}
+              <div>
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Thống kê</h3>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    {label:'Ngày công', value:detailEmployee.totalWorkingDays||0},
+                    {label:'Số lần đi muộn', value:detailEmployee.lateCount||0},
+                    {label:'Tỷ lệ đúng giờ', value:`${((detailEmployee.onTimeRate||0)*100).toFixed(0)}%`},
+                  ].map(row => (
+                    <div key={row.label}>
+                      <p className="text-xs text-gray-400 mb-0.5">{row.label}</p>
+                      <p className="text-sm font-medium text-gray-900">{row.value}</p>
                     </div>
                   ))}
                 </div>

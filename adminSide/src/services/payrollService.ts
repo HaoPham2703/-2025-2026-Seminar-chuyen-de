@@ -38,6 +38,7 @@ export interface EmployeeOption {
   name: string
   code: string
   position: string
+  positionSalary: number
   email: string
 }
 
@@ -210,5 +211,30 @@ export async function deletePayrolls(ids: string[]): Promise<void> {
   const response = await api.delete<null>('/payrolls/bulk-delete', { ids })
   if (!response.success) {
     throw new Error(response.message || 'Failed to delete payrolls')
+  }
+}
+
+export interface BulkPayrollResult {
+  created: number
+  failed: number
+  details: { employeeId: string; reason: string }[]
+}
+
+export async function createBulkPayroll(data: {
+  employeeIds: string[]
+  period: PayrollPeriod
+  baseSalary: number
+  allowances?: PayrollItem[]
+  deductions?: PayrollItem[]
+  status?: 'DRAFT' | 'PENDING' | 'APPROVED'
+}): Promise<BulkPayrollResult> {
+  const raw = await api.post('/payrolls/bulk', data) as { success: boolean; message?: string; data?: { created?: { employeeId: string; id: string }[]; failed?: { employeeId: string; reason: string }[] } }
+  if (!raw.success && !raw.data?.created?.length) {
+    throw new Error(raw.message || 'Bulk creation failed')
+  }
+  return {
+    created: raw.data?.created?.length ?? 0,
+    failed: raw.data?.failed?.length ?? 0,
+    details: raw.data?.failed ?? [],
   }
 }

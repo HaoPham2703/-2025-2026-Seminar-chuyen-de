@@ -152,7 +152,7 @@ router.get('/employees', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), asy
     const employees = await db
       .collection('employees')
       .find({ tenantId: new ObjectId(tenantId) })
-      .project({ userId: 1, 'personalInfo.firstName': 1, 'personalInfo.lastName': 1, employeeId: 1, 'employment.position': 1 })
+      .project({ userId: 1, 'personalInfo.firstName': 1, 'personalInfo.lastName': 1, employeeId: 1, 'employment.position': 1, 'employment.baseSalary': 1 })
       .toArray();
 
     // Lấy email từ users collection
@@ -169,6 +169,7 @@ router.get('/employees', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), asy
       name: `${e.personalInfo?.lastName || ''} ${e.personalInfo?.firstName || ''}`.trim(),
       code: e.employeeId || '',
       position: e.employment?.position || '',
+      positionSalary: e.employment?.baseSalary || 0,
       email: e.userId ? (userMap[e.userId.toString()] || '') : '',
     }));
 
@@ -424,6 +425,11 @@ router.post('/', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req,
       });
     }
 
+    // Validation: baseSalary không được âm
+    if (normalizeMoney(baseSalary) < 0) {
+      return res.status(400).json({ success: false, message: 'baseSalary không được âm' });
+    }
+
     const db = getDatabase();
     const tenantObjectId = new ObjectId(tenantId);
     const employeeObjectId = new ObjectId(employeeId);
@@ -517,6 +523,110 @@ router.post('/', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req,
       data: {
         id: result.insertedId.toString(),
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/payrolls/bulk
+ * Tạo phiếu lương hàng loạt cho nhiều nhân viên cùng lúc
+ */
+router.post('/bulk', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
+  try {
+    const { tenantId, userId } = req.user;
+    const { employeeIds = [], period, baseSalary, allowances = [], deductions = [], status = 'DRAFT' } = req.body;
+
+    if (!Array.isArray(employeeIds) || employeeIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'employeeIds must be non-empty array' });
+    }
+    if (!period?.month || !period?.year) {
+      return res.status(400).json({ success: false, message: 'period.month/year required' });
+    }
+
+    // Validation: baseSalary không được âm
+    if (normalizeMoney(baseSalary) < 0) {
+      return res.status(400).json({ success: false, message: 'baseSalary không được âm' });
+    }
+
+    const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
+    const periodMonth = parseInt(period.month, 10);
+    const periodYear = parseInt(period.year, 10);
+    const now = new Date();
+    const base = normalizeMoney(baseSalary);
+    const allowancesTotal = sumAmount(allowances);
+    const deductionsTotal = sumAmount(deductions);
+    const results = { created: [], failed: [] };
+
+    for (const employeeIdStr of employeeIds) {
+      try {
+        const employeeObjectId = new ObjectId(employeeIdStr);
+        const existing = await db.collection('payrolls').findOne({
+          tenantId: tenantObjectId,
+          employeeId: employeeObjectId,
+          'period.month': periodMonth,
+          'period.year': periodYear,
+          isSuperseded: { $ne: true },
+        });
+        if (existing) {
+          results.failed.push({ employeeId: employeeIdStr, reason: 'Đã có phiếu lương tháng này' });
+          continue;
+        }
+        const doc = {
+          tenantId: tenantObjectId,
+          employeeId: employeeObjectId,
+          period: { month: periodMonth, year: periodYear },
+          baseSalary: base,
+          allowances,
+          deductions,
+          allowancesTotal,
+          deductionsTotal,
+          netSalary: base + allowancesTotal - deductionsTotal,
+          status,
+          approvedAt: now,
+          createdAt: now,
+          createdBy: new ObjectId(userId),
+          revisionOf: null,
+          revisedFrom: null,
+          revisedAt: null,
+          revisedBy: null,
+          reviseReason: null,
+          isSuperseded: false,
+          supersededBy: null,
+          updatedAt: now,
+          updatedBy: new ObjectId(userId),
+        };
+        const r = await db.collection('payrolls').insertOne(doc);
+        await db.collection('payroll_audits').insertOne({
+          tenantId: tenantObjectId,
+          payrollId: r.insertedId,
+          action: 'CREATE',
+          performedBy: new ObjectId(userId),
+          performedAt: now,
+          reason: null,
+          previousValues: null,
+          nextValues: {
+            employeeId: employeeObjectId,
+            period: doc.period,
+            baseSalary: doc.baseSalary,
+            allowances: doc.allowances,
+            deductions: doc.deductions,
+            status: doc.status,
+          },
+        });
+        results.created.push({ employeeId: employeeIdStr, id: r.insertedId.toString() });
+      } catch (err) {
+        results.failed.push({ employeeId: employeeIdStr, reason: err.message || 'Unknown' });
+      }
+    }
+
+    const finalStatus = results.failed.length === employeeIds.length ? 400 : 200;
+    res.status(finalStatus).json({
+      success: results.created.length > 0,
+      data: results,
+      message: `Tạo thành công ${results.created.length}/${employeeIds.length} phiếu lương`,
     });
   } catch (error) {
     next(error);

@@ -17,6 +17,7 @@ import {
   CheckCircle,
   XCircle,
   Info,
+  Search,
 } from 'lucide-react'
 
 const TYPE_OPTIONS = [
@@ -77,6 +78,10 @@ export default function Notifications() {
   const [employees, setEmployees] = useState<any[]>([])
   const [departments, setDepartments] = useState<string[]>([])
   const [loadingEmployees, setLoadingEmployees] = useState(false)
+
+  // Employee search state
+  const [employeeSearch, setEmployeeSearch] = useState('')
+  const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false)
 
   const loadHistory = async (page = 1) => {
     try {
@@ -201,6 +206,13 @@ export default function Notifications() {
       prev.includes(id) ? prev.filter(e => e !== id) : [...prev, id]
     )
   }
+
+  const filteredEmployees = employees.filter((emp) => {
+  const q = employeeSearch.trim().toLowerCase()
+  if (!q) return true
+  return emp.name?.toLowerCase().includes(q) || emp.email?.toLowerCase().includes(q)
+    || emp.employeeId?.toLowerCase().includes(q) || emp.department?.toLowerCase().includes(q)
+})
 
   const getTypeLabel = (v: string) =>
     TYPE_OPTIONS.find(o => o.value === v)?.[language === 'vi' ? 'labelVi' : 'labelEn'] || v
@@ -405,29 +417,52 @@ export default function Notifications() {
               {targetAudience === 'SPECIFIC' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Chọn nhân viên ({targetEmployeeIds.length} đã chọn)
+                    Tìm kiếm nhân viên ({targetEmployeeIds.length} đã chọn)
                   </label>
-                  {loadingEmployees ? (
-                    <p className="text-sm text-gray-400">Đang tải...</p>
-                  ) : (
-                    <div className="border border-gray-200 rounded-lg max-h-44 overflow-y-auto divide-y divide-gray-100">
-                      {employees.length === 0 ? (
-                        <p className="p-4 text-sm text-gray-400">Chưa có nhân viên</p>
-                      ) : employees.map(emp => {
+
+                  {/* Search input */}
+                  <div className="relative mb-3">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input type="text" value={employeeSearch}
+                      onChange={(e) => { setEmployeeSearch(e.target.value); setShowEmployeeDropdown(true) }}
+                      onFocus={() => setShowEmployeeDropdown(true)}
+                      placeholder="Tìm theo tên, email, mã nhân viên..."
+                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+
+                  {/* Selected chips */}
+                  {targetEmployeeIds.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {targetEmployeeIds.slice(0, 5).map((id) => {
+                        const emp = employees.find(e => e._id === id)
+                        return emp ? (
+                          <span key={id} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs">
+                            {emp.name}
+                            <button type="button" onClick={() => toggleEmployee(id)}
+                              className="hover:text-blue-900 font-bold">×</button>
+                          </span>
+                        ) : null
+                      })}
+                      {targetEmployeeIds.length > 5 && (
+                        <span className="text-xs text-gray-500 py-1">+{targetEmployeeIds.length - 5} khác</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Dropdown */}
+                  {showEmployeeDropdown && (
+                    <div className="border border-gray-200 rounded-lg max-h-52 overflow-y-auto divide-y divide-gray-100">
+                      {loadingEmployees ? (
+                        <p className="p-4 text-sm text-gray-400">Đang tải...</p>
+                      ) : filteredEmployees.length === 0 ? (
+                        <p className="p-4 text-sm text-gray-400">Không tìm thấy nhân viên</p>
+                      ) : filteredEmployees.map((emp) => {
                         const selected = targetEmployeeIds.includes(emp._id)
                         return (
-                          <label
-                            key={emp._id}
-                            className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-blue-50 transition-colors ${
-                              selected ? 'bg-blue-50' : ''
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selected}
-                              onChange={() => toggleEmployee(emp._id)}
-                              className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer"
-                            />
+                          <label key={emp._id}
+                            className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-blue-50 ${selected ? 'bg-blue-50' : ''}`}>
+                            <input type="checkbox" checked={selected} onChange={() => toggleEmployee(emp._id)}
+                              className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer" />
                             <div className="flex-1 min-w-0">
                               <p className="text-sm font-medium text-gray-800 truncate">{emp.name}</p>
                               <p className="text-xs text-gray-400 truncate">{emp.email || emp.department || ''}</p>
@@ -436,6 +471,13 @@ export default function Notifications() {
                         )
                       })}
                     </div>
+                  )}
+
+                  {targetEmployeeIds.length > 0 && (
+                    <button type="button" onClick={() => setTargetEmployeeIds([])}
+                      className="text-xs text-red-500 hover:text-red-700 mt-2 cursor-pointer">
+                      Xóa tất cả đã chọn
+                    </button>
                   )}
                 </div>
               )}

@@ -9,16 +9,6 @@ const STATUS_COLORS: Record<string, string> = {
   REJECTED: 'bg-red-100 text-red-700',
 }
 
-const TYPE_LABELS: Record<string, { vi: string; en: string }> = {
-  SICK: { vi: 'Nghỉ ốm', en: 'Sick Leave' },
-  ANNUAL: { vi: 'Nghỉ phép năm', en: 'Annual Leave' },
-  UNPAID: { vi: 'Nghỉ không lương', en: 'Unpaid Leave' },
-  MATERNITY: { vi: 'Nghỉ thai sản', en: 'Maternity Leave' },
-  PATERNITY: { vi: 'Nghỉ paternity', en: 'Paternity Leave' },
-  BEREAVEMENT: { vi: 'Nghỉ tang', en: 'Bereavement Leave' },
-  OTHER: { vi: 'Khác', en: 'Other' },
-}
-
 const formatDate = (dateStr: string, lang: string) => {
   const d = new Date(dateStr)
   return d.toLocaleDateString(lang === 'vi' ? 'vi-VN' : 'en-US', {
@@ -77,10 +67,6 @@ export default function LeaveRequests() {
     } finally {
       setProcessingId(null)
     }
-  }
-
-  const getTypeLabel = (type: string) => {
-    return TYPE_LABELS[type]?.[language] || type
   }
 
   const stats = {
@@ -161,9 +147,6 @@ export default function LeaveRequests() {
                   {t('leaveRequests.employee') || 'Nhân viên'}
                 </th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
-                  {t('leaveRequests.type') || 'Loại nghỉ'}
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
                   {t('leaveRequests.dateRange') || 'Thời gian'}
                 </th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
@@ -186,9 +169,6 @@ export default function LeaveRequests() {
                   <td className="px-4 py-3">
                     <div className="font-medium text-gray-900">{r.employeeName}</div>
                     <div className="text-xs text-gray-400">{r.employeeRole}</div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-sm text-gray-700">{getTypeLabel(r.type)}</span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="text-sm text-gray-700">
@@ -253,7 +233,7 @@ export default function LeaveRequests() {
                   : (t('leaveRequests.rejectTitle') || 'Từ chối yêu cầu')}
               </h2>
               <p className="text-sm text-gray-500 mt-1">
-                {modalRequest.employeeName} — {getTypeLabel(modalRequest.type)}
+                {modalRequest.employeeName}
               </p>
             </div>
 

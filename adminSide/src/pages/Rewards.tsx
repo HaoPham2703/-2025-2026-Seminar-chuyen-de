@@ -392,6 +392,11 @@ export default function Rewards() {
             ))}
           </div>
 
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-xs text-blue-700 mb-4">
+            💡 Khen thưởng/kỷ luật đã duyệt sẽ tự động áp dụng vào tính lương kỳ tiếp theo
+            (chọn nhân viên + tháng để tạo phiếu lương). Không ảnh hưởng phiếu đã tạo.
+          </div>
+
           {/* Add Button */}
           <div className="flex justify-end">
             <button onClick={openRewardModal}

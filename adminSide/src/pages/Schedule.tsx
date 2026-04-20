@@ -28,14 +28,12 @@ export default function Schedule() {
   // ─── State: Week Navigation ──────────────────────────────────────────────
   const [selectedWeek, setSelectedWeek] = useState(() => {
     const now = new Date()
+    now.setHours(0, 0, 0, 0)
     const day = now.getDay()
-    const diff = now.getDate() - day + (day === 0 ? -6 : 1) // Monday as first day
-    const monday = new Date(now)
-    monday.setDate(diff)
-    return monday
+    const diff = day === 0 ? -6 : 1 - day
+    now.setDate(now.getDate() + diff)
+    return now
   })
-
-  // ─── State: Schedules ────────────────────────────────────────────────────
   const [weekSchedules, setWeekSchedules] = useState<WeekSchedule>({})
   const [loadingSchedules, setLoadingSchedules] = useState(false)
 
@@ -87,8 +85,13 @@ export default function Schedule() {
     const loadSchedules = async () => {
       try {
         setLoadingSchedules(true)
-        const weekStart = selectedWeek.toISOString().split('T')[0]
-        const data = await getWeekSchedules(weekStart)
+        const weekStartISO = (() => {
+          const d = new Date(selectedWeek)
+          d.setHours(0, 0, 0, 0)
+          const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+          return local.toISOString().split('T')[0]
+        })()
+        const data = await getWeekSchedules(weekStartISO)
         setWeekSchedules(data)
       } catch (err: any) {
         console.error('Failed to load schedules:', err)
@@ -121,10 +124,10 @@ export default function Schedule() {
   const getWeekDates = (date: Date) => {
     const week = []
     const startOfWeek = new Date(date)
+    startOfWeek.setHours(0, 0, 0, 0)
     const day = startOfWeek.getDay()
-    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1)
-    startOfWeek.setDate(diff)
-
+    const diff = day === 0 ? -6 : 1 - day
+    startOfWeek.setDate(startOfWeek.getDate() + diff)
     for (let i = 0; i < 7; i++) {
       const currentDate = new Date(startOfWeek)
       currentDate.setDate(startOfWeek.getDate() + i)
@@ -142,12 +145,14 @@ export default function Schedule() {
   }
 
   const getScheduleForCell = (employeeId: string, date: Date): DailySchedule | null => {
-    const dateStr = date.toISOString().split('T')[0]
+    const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+    const dateStr = localDate.toISOString().split('T')[0]
     return weekSchedules[employeeId]?.[dateStr] || null
   }
 
   const openScheduleModal = (employeeId: string, employeeName: string, date: Date) => {
-    const dateStr = date.toISOString().split('T')[0]
+    const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+    const dateStr = localDate.toISOString().split('T')[0]
     const existing = getScheduleForCell(employeeId, date)
     setSelectedCell({ employeeId, employeeName, date: dateStr, existing })
     setShowModal(true)
@@ -169,8 +174,13 @@ export default function Schedule() {
         endTime: payload.endTime,
       })
       // Reload schedules
-      const weekStart = selectedWeek.toISOString().split('T')[0]
-      const data = await getWeekSchedules(weekStart)
+      const weekStartISO = (() => {
+        const d = new Date(selectedWeek)
+        d.setHours(0, 0, 0, 0)
+        const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+        return local.toISOString().split('T')[0]
+      })()
+      const data = await getWeekSchedules(weekStartISO)
       setWeekSchedules(data)
       setShowModal(false)
       setSelectedCell(null)
@@ -184,8 +194,13 @@ export default function Schedule() {
 
     try {
       await deleteDailySchedule(selectedCell.existing._id)
-      const weekStart = selectedWeek.toISOString().split('T')[0]
-      const data = await getWeekSchedules(weekStart)
+      const weekStartISO = (() => {
+        const d = new Date(selectedWeek)
+        d.setHours(0, 0, 0, 0)
+        const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+        return local.toISOString().split('T')[0]
+      })()
+      const data = await getWeekSchedules(weekStartISO)
       setWeekSchedules(data)
       setShowModal(false)
       setSelectedCell(null)
@@ -256,10 +271,11 @@ export default function Schedule() {
             type="button"
             onClick={() => setSelectedWeek(() => {
               const now = new Date()
+              now.setHours(0, 0, 0, 0)
               const day = now.getDay()
-              const diff = now.getDate() - day + (day === 0 ? -6 : 1)
-              const monday = new Date(now)
-              monday.setDate(diff)
+              const diff = day === 0 ? -6 : 1 - day
+              now.setDate(now.getDate() + diff)
+              return now
               return monday
             })}
             className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer text-sm"
