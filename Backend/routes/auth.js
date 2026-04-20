@@ -423,6 +423,46 @@ router.post('/signup', async (req, res, next) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
+/**
+ * @swagger
+ * /auth/refresh-token:
+ *   post:
+ *     summary: Làm mới access token
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Token mới
+ *       401:
+ *         description: Token không hợp lệ
+ */
+router.post('/refresh-token', authenticateToken, async (req, res, next) => {
+  try {
+    const db = getDatabase();
+    const userId = new ObjectId(req.user.userId);
+    const user = await db.collection('users').findOne({ _id: userId });
+
+    if (!user || !user.isActive) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not found or inactive'
+      });
+    }
+
+    const token = generateToken({
+      userId: user._id.toString(),
+      tenantId: user.tenantId.toString(),
+      email: user.email,
+      role: user.role
+    });
+
+    res.json({ success: true, data: { token } });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/me', authenticateToken, async (req, res, next) => {
   try {
     const db = getDatabase();

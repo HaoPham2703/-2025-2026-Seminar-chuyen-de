@@ -57,12 +57,13 @@ export default function ScanQrScreen() {
 
     hasScannedRef.current = true;
     setIsLoading(true);
+    setShowScanner(false);
 
     try {
       const employeeData = await verifyQrToken(value);
       setScannedEmployee(employeeData);
       setScannedQrToken(value);
-      setShowScanner(false); // đóng camera sau khi quét thành công
+      setShowAttendanceModal(true);
     } catch (error: any) {
       const message = error?.message || 'Không thể tìm thấy thông tin nhân viên';
       if (message.includes('Invalid or expired QR code')) {
@@ -205,35 +206,6 @@ export default function ScanQrScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-
-          {scannedEmployee ? (
-            <TouchableOpacity
-              style={[
-                styles.card,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-              onPress={() => setShowAttendanceModal(true)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.cardTitle, { color: colors.text }]}>
-                Đã quét: {scannedEmployee.employee.personalInfo.firstName}{' '}
-                {scannedEmployee.employee.personalInfo.lastName}
-              </Text>
-
-              <Text
-                style={[
-                  styles.cardDescription,
-                  { color: colors.textSecondary },
-                ]}
-              >
-                Mã NV: {scannedEmployee.employee.employeeId}
-              </Text>
-
-              <Text style={[styles.tapHint, { color: 'hsl(25, 60%, 45%)' }]}>
-                Nhấn để chấm công →
-              </Text>
-            </TouchableOpacity>
-          ) : null}
 
           {showScanner && (
             <View

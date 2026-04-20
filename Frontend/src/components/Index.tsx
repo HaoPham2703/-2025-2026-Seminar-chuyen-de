@@ -2,12 +2,11 @@ import { RefreshableScrollView } from "@/components/refreshable-scroll-view";
 import { useTabReload } from "@/hooks/use-tab-reload";
 import { useTheme } from "@/src/hooks/use-theme";
 import { getAuthToken } from "@/src/services/api";
-import { clockIn, clockOut, getCurrentAttendance, type AttendanceRecord } from "@/src/services/attendanceService";
+import { clockOut, getCurrentAttendance, type AttendanceRecord } from "@/src/services/attendanceService";
 import { getEmployeeProfile, getEmployeeQrCode } from "@/src/services/employeeService";
 import { useFocusEffect } from "expo-router";
-import { QrCode } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Alert, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ClockButton from "./ClockButton";
@@ -30,13 +29,14 @@ const Index = () => {
   const [userName, setUserName] = useState<string>("");
   const [userRole, setUserRole] = useState<string>("");
   const [employeeId, setEmployeeId] = useState<string>("");
-  const [employeeCode, setEmployeeCode] = useState<string>("");
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [qrCountdown, setQrCountdown] = useState<number | null>(null);
   const [qrExpiresIn, setQrExpiresIn] = useState<number | null>(null);
   const [showQrModal, setShowQrModal] = useState(false);
   const [currentAttendance, setCurrentAttendance] = useState<AttendanceRecord | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
+  const qrPollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wasClockedInRef = useRef<boolean>(false);
 
   // Register reload function for tab double press
   const handleReload = useCallback(async () => {
@@ -137,7 +137,6 @@ const Index = () => {
       setUserName(fullName);
       setUserRole(profileData.employee.employment.position || "Employee");
       setEmployeeId(profileData.employee.id);
-      setEmployeeCode(profileData.employee.employeeId || "");
       setQrCode(profileData.employee.qrToken || profileData.employee.qrCode?.code || null);
       setQrExpiresIn(profileData.employee.qrTokenExpiresIn ?? null);
       setQrCountdown(profileData.employee.qrTokenExpiresIn ?? null);
@@ -269,40 +268,44 @@ const Index = () => {
     if (isClockedIn) {
       setShowConfirmModal(true);
     } else {
-      // Clock In via API
-      try {
-        if (!employeeId) {
-          Alert.alert("Error", "Employee ID not found");
-          return;
-        }
-
-        const result = await clockIn({
-          employeeId,
-          method: "MOBILE_APP",
-        });
-
-        const now = new Date(result.clockInTime);
-        setClockInTime(now);
-        setIsClockedIn(true);
-        
-        // Show notification
-        setNotification(result.isLate ? "late" : "success");
-        
-        // Start timer to update working hours
-        const interval = setInterval(() => {
-          setCurrentTime(new Date());
-        }, 1000);
-        setTimerInterval(interval as ReturnType<typeof setInterval>);
-
-        // Reload attendance data
-        const attendanceData = await getCurrentAttendance(employeeId);
-        setCurrentAttendance(attendanceData.attendance);
-      } catch (error: any) {
-        console.error("Clock in error:", error);
-        Alert.alert("Error", error.message || "Failed to clock in");
-      }
+      setShowQrModal(true);
     }
   };
+
+  // Theo dõi để tự đóng modal + reload khi admin quét clock-in thành công
+  useEffect(() => {
+    if (!showQrModal || !employeeId) return;
+
+    wasClockedInRef.current = isClockedIn;
+
+    qrPollIntervalRef.current = setInterval(async () => {
+      try {
+        const token = await getAuthToken();
+        if (!token) return;
+        const data = await getCurrentAttendance(employeeId);
+        if (!qrPollIntervalRef.current) return;
+
+        const justClockedIn = data.isClockedIn && !data.isClockedOut;
+        if (justClockedIn && !wasClockedInRef.current) {
+          clearInterval(qrPollIntervalRef.current);
+          qrPollIntervalRef.current = null;
+          setIsClockedIn(true);
+          if (data.attendance?.clockIn?.time) {
+            setClockInTime(new Date(data.attendance.clockIn.time));
+          }
+          setShowQrModal(false);
+          loadUserData();
+        }
+      } catch { /* ignore */ }
+    }, 2000);
+
+    return () => {
+      if (qrPollIntervalRef.current) {
+        clearInterval(qrPollIntervalRef.current);
+        qrPollIntervalRef.current = null;
+      }
+    };
+  }, [showQrModal, employeeId]);
 
   const handleConfirmClockOut = async () => {
     try {
@@ -332,24 +335,6 @@ const Index = () => {
     } catch (error: any) {
       console.error("Clock out error:", error);
       Alert.alert("Error", error.message || "Failed to clock out");
-    }
-  };
-
-  const handleExternalAttendanceSuccess = async () => {
-    if (!employeeId) return;
-
-    try {
-      const attendanceData = await getCurrentAttendance(employeeId);
-      setCurrentAttendance(attendanceData.attendance);
-
-      if (attendanceData.attendance && attendanceData.isClockedIn && !attendanceData.isClockedOut) {
-        setIsClockedIn(true);
-        if (attendanceData.attendance.clockIn?.time) {
-          setClockInTime(new Date(attendanceData.attendance.clockIn.time));
-        }
-      }
-    } catch {
-      // ignore
     }
   };
 
@@ -400,21 +385,6 @@ const Index = () => {
           />
         </Animated.View>
 
-        {/* QR Code Button */}
-        <Animated.View
-          entering={FadeInDown.delay(200).duration(300)}
-        >
-          <TouchableOpacity
-            style={[styles.qrButton, { backgroundColor: colors.card, borderColor: colors.border }]}
-            onPress={() => setShowQrModal(true)}
-            activeOpacity={0.7}
-          >
-            <QrCode size={20} color={colors.accent} />
-            <Text style={[styles.qrButtonText, { color: colors.accent }]}>Mã QR của tôi</Text>
-          </TouchableOpacity>
-        </Animated.View>
-
-
         {/* Location Status */}
         <LocationStatus isNearOffice={true} />
 
@@ -448,11 +418,6 @@ const Index = () => {
         visible={showQrModal}
         onClose={() => setShowQrModal(false)}
         qrValue={qrCode}
-        employeeName={userName}
-        employeeCode={employeeCode}
-        employeeId={employeeId}
-        onAttendanceSuccess={handleExternalAttendanceSuccess}
-        qrExpiresIn={qrExpiresIn ?? undefined}
       />
     </View>
   );

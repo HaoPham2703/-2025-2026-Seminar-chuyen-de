@@ -99,14 +99,15 @@ async function removeAuthToken(): Promise<void> {
 }
 
 /**
- * Base fetch function với authentication
+ * Base fetch function với authentication + auto-refresh token
  */
 async function apiFetch<T = any>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  retryCount = 0
 ): Promise<ApiResponse<T>> {
   const token = await getAuthToken();
-  
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string> || {}),
@@ -118,34 +119,40 @@ async function apiFetch<T = any>(
 
   try {
     const url = `${API_BASE_URL}${endpoint}`;
-    console.log('API Request:', url); // Debug log
-    console.log('Token present:', !!token); // Debug log
-    
+    console.log('API Request:', url);
+    console.log('Token present:', !!token);
+
     const response = await fetch(url, {
       ...options,
       headers,
     });
 
-    // Parse response JSON
-    const data = await response.json().catch(() => {
-      // If response is not JSON, return error message
-      return { 
-        success: false, 
-        message: `HTTP ${response.status}: ${response.statusText}` 
-      };
-    });
+    const data = await response.json().catch(() => ({
+      success: false,
+      message: `HTTP ${response.status}: ${response.statusText}`,
+    }));
 
-    // Check if response is ok
+    // Token expired → thử refresh token rồi retry 1 lần
+    if (response.status === 401 && retryCount === 0) {
+      console.log('Token expired, attempting refresh...');
+      const refreshed = await refreshToken();
+      if (refreshed) {
+        console.log('Token refreshed, retrying request...');
+        return apiFetch<T>(endpoint, options, retryCount + 1);
+      }
+      // Refresh thất bại → emit unauthorized
+      await removeAuthToken();
+      if (!hasEmittedUnauthorized) {
+        hasEmittedUnauthorized = true;
+        DeviceEventEmitter.emit(AUTH_UNAUTHORIZED_EVENT);
+      }
+      throw new Error('Token expired. Please login again.');
+    }
+
     if (!response.ok) {
       const errorMessage = data.message || data.error || `HTTP ${response.status}: ${response.statusText}`;
-      console.error('API Error Response:', {
-        status: response.status,
-        statusText: response.statusText,
-        message: errorMessage,
-        data
-      });
+      console.error('API Error Response:', { status: response.status, message: errorMessage, data });
 
-      // Token expired / unauthorized: clear token + emit event once
       if (response.status === 401) {
         await removeAuthToken();
         if (!hasEmittedUnauthorized) {
@@ -157,7 +164,6 @@ async function apiFetch<T = any>(
       throw new Error(errorMessage);
     }
 
-    // Check if response has success field and it's false
     if (data.success === false) {
       const errorMessage = data.message || data.error || 'API request failed';
       console.error('API Error (success=false):', errorMessage);
@@ -167,7 +173,6 @@ async function apiFetch<T = any>(
     return data;
   } catch (error: any) {
     console.error('API Error:', error);
-    // Re-throw with better error message
     if (error.message) {
       throw error;
     }
@@ -175,5 +180,35 @@ async function apiFetch<T = any>(
   }
 }
 
-export { apiFetch, getAuthToken, removeAuthToken, setAuthToken, AUTH_UNAUTHORIZED_EVENT };
+/**
+ * Gọi /auth/refresh-token để lấy token mới
+ */
+async function refreshToken(): Promise<boolean> {
+  try {
+    const token = await getAuthToken();
+    if (!token) return false;
+
+    const response = await fetch(`${API_BASE_URL}/auth/refresh-token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) return false;
+
+    const data = await response.json();
+    if (data.success && data.data?.token) {
+      await setAuthToken(data.data.token);
+      hasEmittedUnauthorized = false;
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+export { apiFetch, getAuthToken, removeAuthToken, setAuthToken, refreshToken, AUTH_UNAUTHORIZED_EVENT };
 

@@ -1,5 +1,5 @@
-import { Clock, User, X } from 'lucide-react-native';
-import { useState } from 'react';
+import { X } from 'lucide-react-native';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -19,7 +19,7 @@ interface EmployeeAttendanceModalProps {
   onSuccess: () => void;
 }
 
-type ModalState = 'idle' | 'loading' | 'success' | 'error';
+type ModalState = 'loading' | 'success' | 'error';
 
 export default function EmployeeAttendanceModal({
   visible,
@@ -28,82 +28,55 @@ export default function EmployeeAttendanceModal({
   onClose,
   onSuccess,
 }: EmployeeAttendanceModalProps) {
-  const [state, setState] = useState<ModalState>('idle');
+  const [state, setState] = useState<ModalState>('loading');
   const [errorMessage, setErrorMessage] = useState('');
 
-  if (!visible) {
-    return null;
-  }
+  // Auto-trigger clock-in when modal opens
+  useEffect(() => {
+    if (!visible || !employee?.employee?.id) return;
 
-  if (!employee?.employee?.id) {
-    return (
-      <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-        <View style={styles.overlay}>
-          <View style={styles.container}>
-            <View style={styles.body}>
-              <View style={styles.errorBanner}>
-                <Text style={styles.errorText}>Lỗi: Không tìm thấy ID nhân viên</Text>
-              </View>
-              <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
-                <Text style={styles.cancelButtonText}>Đóng</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    );
-  }
+    const doClockIn = async () => {
+      setState('loading');
+      setErrorMessage('');
+      try {
+        await clockIn({
+          employeeId: employee.employee.id,
+          qrCode: qrCode ?? undefined,
+          method: 'QR_SCAN',
+        });
+        setState('success');
+        setTimeout(() => {
+          onSuccess();
+          onClose();
+          setState('loading');
+        }, 2000);
+      } catch (err: any) {
+        setState('error');
+        setErrorMessage(err?.message || 'Chấm công thất bại');
+      }
+    };
 
-  // employee.id = MongoDB ObjectId string, employee.employeeId = mã nhân viên "EMP001"
-  const { personalInfo, employment, employeeId: employeeCode, id: dbEmployeeId } = employee.employee;
-  const fullName =
-    `${personalInfo.firstName} ${personalInfo.lastName}`.trim() || employeeCode;
-
-  const handleClockIn = async () => {
-    setState('loading');
-    setErrorMessage('');
-    try {
-      await clockIn({
-        employeeId: dbEmployeeId,
-        qrCode: qrCode ?? undefined,
-        method: 'QR_SCAN',
-      });
-      setState('success');
-      setTimeout(() => {
-        onSuccess();
-        onClose();
-        setState('idle');
-      }, 2000);
-    } catch (err: any) {
-      setState('error');
-      setErrorMessage(err?.message || 'Chấm công thất bại');
-    }
-  };
+    doClockIn();
+  }, [visible, employee]);
 
   const handleClose = () => {
     if (state === 'loading') return;
-    setState('idle');
+    setState('loading');
     setErrorMessage('');
     onClose();
   };
 
-  // ── Success state ──────────────────────────────────────
-  if (state === 'success') {
+  if (!visible) return null;
+
+  // ── Loading state ────────────────────────────────────────
+  if (state === 'loading') {
     return (
-      <Modal
-        visible={visible}
-        transparent
-        animationType="slide"
-        onRequestClose={handleClose}
-      >
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
         <View style={styles.overlay}>
           <View style={styles.container}>
-            <View style={styles.successBody}>
-              <View style={styles.successCircle}>
-                <Text style={styles.successCheck}>✓</Text>
-              </View>
-              <Text style={styles.successTitle}>Chấm công thành công!</Text>
-              <Text style={styles.successSubtitle}>{fullName}</Text>
+            <View style={styles.body}>
+              <ActivityIndicator size="large" color="hsl(25, 80%, 50%)" />
+              <Text style={styles.loadingText}>Đang chấm công...</Text>
             </View>
           </View>
         </View>
@@ -111,89 +84,41 @@ export default function EmployeeAttendanceModal({
     );
   }
 
-  // ── Idle / Loading / Error state ───────────────────────
+  // ── Success state ──────────────────────────────────────
+  if (state === 'success') {
+    return (
+      <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
+        <View style={styles.overlay}>
+          <View style={styles.container}>
+            <View style={styles.body}>
+              <View style={styles.successCircle}>
+                <Text style={styles.successCheck}>✓</Text>
+              </View>
+              <Text style={styles.successTitle}>Chấm công thành công!</Text>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    );
+  }
+
+  // ── Error state ────────────────────────────────────────
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={handleClose}
-    >
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
       <View style={styles.overlay}>
         <View style={styles.container}>
-          {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.headerTitle}>Thông tin nhân viên</Text>
-            {state !== 'loading' && (
-              <TouchableOpacity onPress={handleClose}>
-                <X size={20} color="hsl(25, 15%, 50%)" />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          <View style={styles.body}>
-            {/* Employee info */}
-            <View style={styles.employeeInfo}>
-              <View style={styles.avatar}>
-                <User size={28} color="#8B6914" strokeWidth={2} />
-              </View>
-              <View style={styles.infoText}>
-                <Text style={styles.name}>{fullName}</Text>
-                <Text style={styles.meta}>
-                  <Text style={styles.metaLabel}>Mã NV: </Text>
-                  {employeeCode || '—'}
-                </Text>
-                {employment?.position && (
-                  <Text style={styles.meta}>
-                    <Text style={styles.metaLabel}>Vị trí: </Text>
-                    {employment.position}
-                  </Text>
-                )}
-                {employment?.department && (
-                  <Text style={styles.meta}>
-                    <Text style={styles.metaLabel}>Phòng ban: </Text>
-                    {employment.department}
-                  </Text>
-                )}
-              </View>
-            </View>
-
-            <View style={styles.divider} />
-
-            {/* Error banner */}
-            {state === 'error' && (
-              <View style={styles.errorBanner}>
-                <Text style={styles.errorText}>{errorMessage}</Text>
-              </View>
-            )}
-
-            {/* Clock In button */}
-            <TouchableOpacity
-              style={[
-                styles.clockInButton,
-                state === 'loading' && styles.clockInButtonDisabled,
-              ]}
-              onPress={handleClockIn}
-              disabled={state === 'loading'}
-              activeOpacity={0.8}
-            >
-              {state === 'loading' ? (
-                <ActivityIndicator color="white" />
-              ) : (
-                <View style={styles.clockInButtonContent}>
-                  <Clock size={18} color="white" style={styles.clockIcon} />
-                  <Text style={styles.clockInButtonText}>Chấm công</Text>
-                </View>
-              )}
+            <Text style={styles.headerTitle}>Lỗi</Text>
+            <TouchableOpacity onPress={handleClose}>
+              <X size={20} color="hsl(25, 15%, 50%)" />
             </TouchableOpacity>
-
-            {/* Cancel button */}
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={handleClose}
-              disabled={state === 'loading'}
-            >
-              <Text style={styles.cancelButtonText}>Hủy</Text>
+          </View>
+          <View style={styles.body}>
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            </View>
+            <TouchableOpacity style={styles.cancelButton} onPress={handleClose}>
+              <Text style={styles.cancelButtonText}>Đóng</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -206,143 +131,78 @@ const styles = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
   },
   container: {
     backgroundColor: 'white',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingBottom: 40,
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 340,
+    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
+    padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: 'hsl(30, 20%, 90%)',
+    borderBottomColor: 'hsl(30, 15%, 92%)',
   },
   headerTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
     color: 'hsl(25, 30%, 20%)',
   },
   body: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
+    padding: 24,
+    alignItems: 'center',
+    gap: 16,
   },
-  employeeInfo: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 16,
+  loadingText: {
+    fontSize: 16,
+    color: 'hsl(25, 15%, 45%)',
+    marginTop: 8,
   },
-  avatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'hsl(40, 60%, 92%)',
+  successCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'hsl(145, 65%, 42%)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
   },
-  infoText: {
-    flex: 1,
+  successCheck: {
+    fontSize: 32,
+    color: 'white',
+    fontWeight: '900',
   },
-  name: {
-    fontSize: 20,
+  successTitle: {
+    fontSize: 18,
     fontWeight: '700',
     color: 'hsl(25, 30%, 20%)',
-    marginBottom: 6,
-  },
-  meta: {
-    fontSize: 13,
-    color: 'hsl(25, 15%, 45%)',
-    marginTop: 2,
-    lineHeight: 20,
-  },
-  metaLabel: {
-    fontWeight: '600',
-    color: 'hsl(25, 30%, 35%)',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: 'hsl(30, 20%, 90%)',
-    marginVertical: 12,
   },
   errorBanner: {
     backgroundColor: 'hsl(0, 70%, 95%)',
     borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginBottom: 12,
+    padding: 14,
+    width: '100%',
   },
   errorText: {
-    color: 'hsl(0, 70%, 40%)',
-    fontSize: 13,
+    color: 'hsl(0, 65%, 40%)',
+    fontSize: 14,
     textAlign: 'center',
   },
-  clockInButton: {
-    backgroundColor: 'hsl(145, 60%, 42%)',
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-  clockInButtonDisabled: {
-    backgroundColor: 'hsl(145, 40%, 55%)',
-  },
-  clockInButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  clockIcon: {
-    marginRight: 8,
-  },
-  clockInButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '700',
-  },
   cancelButton: {
+    backgroundColor: 'hsl(25, 15%, 90%)',
+    borderRadius: 10,
     paddingVertical: 12,
-    alignItems: 'center',
+    paddingHorizontal: 24,
   },
   cancelButtonText: {
-    color: 'hsl(25, 15%, 50%)',
     fontSize: 15,
     fontWeight: '600',
-  },
-  // Success state
-  successBody: {
-    alignItems: 'center',
-    paddingVertical: 40,
-    paddingHorizontal: 20,
-  },
-  successCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: 'hsl(145, 60%, 42%)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  successCheck: {
-    color: 'white',
-    fontSize: 32,
-    fontWeight: '700',
-  },
-  successTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: 'hsl(145, 60%, 30%)',
-    marginBottom: 4,
-  },
-  successSubtitle: {
-    fontSize: 14,
-    color: 'hsl(25, 15%, 45%)',
+    color: 'hsl(25, 30%, 20%)',
   },
 });

@@ -381,33 +381,6 @@ export default function Payroll() {
     }
   }
 
-  const handleAddAllowance = () => {
-    setFormAllowances([...formAllowances, { name: '', amount: '' }])
-  }
-
-  const handleRemoveAllowance = (index: number) => {
-    setFormAllowances(formAllowances.filter((_, i) => i !== index))
-  }
-
-  const handleAllowanceChange = (index: number, field: 'name' | 'amount', value: string) => {
-    const updated = [...formAllowances]
-    updated[index][field] = value
-    setFormAllowances(updated)
-  }
-
-  const handleAddDeduction = () => {
-    setFormDeductions([...formDeductions, { name: '', amount: '' }])
-  }
-
-  const handleRemoveDeduction = (index: number) => {
-    setFormDeductions(formDeductions.filter((_, i) => i !== index))
-  }
-
-  const handleDeductionChange = (index: number, field: 'name' | 'amount', value: string) => {
-    const updated = [...formDeductions]
-    updated[index][field] = value
-    setFormDeductions(updated)
-  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
