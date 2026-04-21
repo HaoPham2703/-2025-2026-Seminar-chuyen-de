@@ -13,8 +13,10 @@ import {
   Settings,
   Users
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { adminService } from '../services/adminService'
 import { t } from '../utils/i18n'
 
 function UserProfile() {
@@ -53,13 +55,47 @@ const menuItems = [
 ]
 
 const shortcuts = [
-  { labelKey: 'shortcuts.newHireOnboarding', count: 1 },
-  { labelKey: 'shortcuts.leaveRequests', count: 2 },
-  { labelKey: 'shortcuts.performanceReviews', count: 3 },
+  { path: '/employees', labelKey: 'shortcuts.newHireOnboarding' },
+  { path: '/leave-requests', labelKey: 'shortcuts.leaveRequests' },
+  { path: '/reports', labelKey: 'shortcuts.performanceReviews' },
 ]
 
 export default function Sidebar() {
   const location = useLocation()
+  const [shortcutCounts, setShortcutCounts] = useState({
+    newHireOnboarding: 0,
+    leaveRequests: 0,
+    performanceReviews: 0,
+  })
+
+  useEffect(() => {
+    const loadShortcutCounts = async () => {
+      try {
+        const [employees, pendingLeaves] = await Promise.all([
+          adminService.getAllEmployees(),
+          adminService.getAllLeaveRequests('PENDING', 200),
+        ])
+
+        setShortcutCounts({
+          newHireOnboarding: employees.total || 0,
+          leaveRequests: pendingLeaves.total || 0,
+          // Hệ thống chưa có module review riêng, tạm để 0 và dẫn sang reports
+          performanceReviews: 0,
+        })
+      } catch (error) {
+        console.error('Failed to load shortcut counts:', error)
+      }
+    }
+
+    loadShortcutCounts()
+  }, [])
+
+  const getShortcutCount = (labelKey: string) => {
+    if (labelKey === 'shortcuts.newHireOnboarding') return shortcutCounts.newHireOnboarding
+    if (labelKey === 'shortcuts.leaveRequests') return shortcutCounts.leaveRequests
+    if (labelKey === 'shortcuts.performanceReviews') return shortcutCounts.performanceReviews
+    return 0
+  }
 
   return (
     <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
@@ -97,17 +133,24 @@ export default function Sidebar() {
           {t('common.shortcuts') || 'Shortcuts'}
         </h3>
         <div className="space-y-1">
-          {shortcuts.map((shortcut, index) => (
-            <div
-              key={index}
-              className="flex items-center justify-between px-4 py-2 rounded-lg hover:bg-gray-50 cursor-pointer"
+          {shortcuts.map((shortcut) => {
+            const isActive = location.pathname === shortcut.path
+            return (
+            <Link
+              key={shortcut.path}
+              to={shortcut.path}
+              className={`flex items-center justify-between px-4 py-2 rounded-lg transition-colors ${
+                isActive
+                  ? 'bg-blue-50'
+                  : 'hover:bg-gray-50'
+              }`}
             >
               <span className="text-sm text-gray-700">{t(shortcut.labelKey)}</span>
               <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded-full font-medium">
-                {shortcut.count}
+                {getShortcutCount(shortcut.labelKey)}
               </span>
-            </div>
-          ))}
+            </Link>
+          )})}
         </div>
       </div>
 

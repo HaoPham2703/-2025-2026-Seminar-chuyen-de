@@ -86,9 +86,9 @@ export default function Dashboard() {
           <LeaveRequestsCard leaveRequests={data.leaveRequests} />
         </div>
 
-        {/* Internship */}
+        {/* Employees */}
         <div>
-          <InternshipCard totalInterns={data.statistics.totalEmployees} />
+          <InternshipCard totalEmployees={data.statistics.totalEmployees} />
         </div>
       </div>
     </div>
