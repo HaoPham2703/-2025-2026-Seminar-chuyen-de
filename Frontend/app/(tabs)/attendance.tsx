@@ -433,22 +433,67 @@ const SHIFT_STYLES: Record<string, { bg: string; text: string; label: string }> 
 
 const DAYS_OF_WEEK_SHORT = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 
+function isValidDate(value: Date): boolean {
+  return !Number.isNaN(value.getTime());
+}
+
+function toDateKeySafe(date: Date): string {
+  if (!isValidDate(date)) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseWeekDateSafe(dateKey: string): Date | null {
+  if (!dateKey) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(year, month - 1, day);
+  if (!isValidDate(parsed)) return null;
+  if (parsed.getFullYear() !== year || parsed.getMonth() !== month - 1 || parsed.getDate() !== day) {
+    return null;
+  }
+  return parsed;
+}
+
+function getMondayKeySafe(date: Date): string {
+  const d = new Date(date);
+  if (!isValidDate(d)) return toDateKeySafe(new Date());
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return toDateKeySafe(d);
+}
+
 function formatWeekRange(weekStart: string, weekEnd: string): string {
-  if (!weekStart) return '';
-  const start = new Date(`${weekStart}T00:00:00.000+07:00`);
-  const end = new Date(`${weekEnd}T00:00:00.000+07:00`);
+  const start = parseWeekDateSafe(weekStart);
+  if (!start) return '';
+  const end = parseWeekDateSafe(weekEnd) || (() => {
+    const fallbackEnd = new Date(start);
+    fallbackEnd.setDate(fallbackEnd.getDate() + 6);
+    return fallbackEnd;
+  })();
   const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'numeric' };
-  return `${start.toLocaleDateString('vi-VN', opts)} – ${end.toLocaleDateString('vi-VN', opts)}`;
+  return `${start.toLocaleDateString('vi-VN', opts)} - ${end.toLocaleDateString('vi-VN', opts)}`;
 }
 
 function ScheduleView({ scheduleMap, scheduleWeekStart, scheduleWeekEnd, onPrevWeek, onNextWeek, onToday }: ScheduleViewProps) {
+  const weekStartDate =
+    parseWeekDateSafe(scheduleWeekStart) ||
+    parseWeekDateSafe(getMondayKeySafe(new Date())) ||
+    new Date();
+
   const weekDates = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(`${scheduleWeekStart}T00:00:00.000+07:00`);
+    const d = new Date(weekStartDate);
     d.setDate(d.getDate() + i);
-    return d.toISOString().split('T')[0];
+    return toDateKeySafe(d) || toDateKeySafe(new Date());
   });
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = toDateKeySafe(new Date());
 
   return (
     <View style={scheduleStyles.container}>
@@ -485,6 +530,8 @@ function ScheduleView({ scheduleMap, scheduleWeekStart, scheduleWeekEnd, onPrevW
         const shiftStyle = SHIFT_STYLES[shiftType] || SHIFT_STYLES.OFF;
         const isToday = dateStr === todayStr;
         const isWeekendDay = index === 0 || index === 6;
+        const dayDate = parseWeekDateSafe(dateStr);
+        const dayDateText = dayDate ? `${dayDate.getDate()}/${dayDate.getMonth() + 1}` : '--/--';
 
         return (
           <View
@@ -500,7 +547,7 @@ function ScheduleView({ scheduleMap, scheduleWeekStart, scheduleWeekEnd, onPrevW
                 {DAYS_OF_WEEK_SHORT[index]}
               </Text>
               <Text style={[scheduleStyles.dayDate, isToday && scheduleStyles.dayDateToday]}>
-                {new Date(`${dateStr}T00:00:00.000+07:00`).getDate()}/{new Date(`${dateStr}T00:00:00.000+07:00`).getMonth() + 1}
+                {dayDateText}
               </Text>
             </View>
             <View style={[scheduleStyles.shiftBox, { backgroundColor: shiftStyle.bg }]}>
@@ -618,20 +665,30 @@ export default function AttendanceScreen() {
   const loadSchedule = async (weekStart: string) => {
     try {
       const data = await getMySchedules(weekStart);
-      setScheduleMap(data.schedule);
-      setScheduleWeekStart(data.weekStart);
-      setScheduleWeekEnd(data.weekEnd);
+      const safeWeekStart = data.weekStart || weekStart || getMondayKeySafe(new Date());
+      const safeWeekStartDate = parseWeekDateSafe(safeWeekStart) || new Date();
+      const safeWeekEnd = data.weekEnd || (() => {
+        const d = new Date(safeWeekStartDate);
+        d.setDate(d.getDate() + 6);
+        return toDateKeySafe(d) || safeWeekStart;
+      })();
+
+      setScheduleMap(data.schedule || {});
+      setScheduleWeekStart(safeWeekStart);
+      setScheduleWeekEnd(safeWeekEnd);
     } catch (e) {
       setScheduleMap({});
+      const fallbackStart = weekStart || getMondayKeySafe(new Date());
+      const fallbackDate = parseWeekDateSafe(fallbackStart) || new Date();
+      const fallbackEndDate = new Date(fallbackDate);
+      fallbackEndDate.setDate(fallbackEndDate.getDate() + 6);
+      setScheduleWeekStart(fallbackStart);
+      setScheduleWeekEnd(toDateKeySafe(fallbackEndDate) || fallbackStart);
     }
   };
 
   const getMondayStr = (date: Date): string => {
-    const d = new Date(date);
-    const day = d.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    d.setDate(d.getDate() + diff);
-    return d.toISOString().split('T')[0];
+    return getMondayKeySafe(date);
   };
 
   const loadEmployeeId = async () => {
@@ -917,14 +974,20 @@ export default function AttendanceScreen() {
             scheduleWeekStart={scheduleWeekStart}
             scheduleWeekEnd={scheduleWeekEnd}
             onPrevWeek={() => {
-              const current = new Date(`${scheduleWeekStart}T00:00:00.000+07:00`);
+              const current =
+                parseWeekDateSafe(scheduleWeekStart) ||
+                parseWeekDateSafe(getMondayStr(new Date())) ||
+                new Date();
               current.setDate(current.getDate() - 7);
-              loadSchedule(current.toISOString().split('T')[0]);
+              loadSchedule(toDateKeySafe(current) || getMondayStr(new Date()));
             }}
             onNextWeek={() => {
-              const current = new Date(`${scheduleWeekStart}T00:00:00.000+07:00`);
+              const current =
+                parseWeekDateSafe(scheduleWeekStart) ||
+                parseWeekDateSafe(getMondayStr(new Date())) ||
+                new Date();
               current.setDate(current.getDate() + 7);
-              loadSchedule(current.toISOString().split('T')[0]);
+              loadSchedule(toDateKeySafe(current) || getMondayStr(new Date()));
             }}
             onToday={() => loadSchedule(getMondayStr(new Date()))}
           />
