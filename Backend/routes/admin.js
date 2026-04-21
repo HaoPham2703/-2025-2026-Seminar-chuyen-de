@@ -764,21 +764,23 @@ router.patch('/leave-requests/:id', async (req, res, next) => {
         const dayStr = current.toISOString().split('T')[0]; // 'YYYY-MM-DD'
         const dayDate = new Date(`${dayStr}T00:00:00.000+07:00`);
 
-        // Only create attendance for weekdays (Mon–Fri)
+        // Only process weekdays (Mon–Fri)
         const dayOfWeek = dayDate.getDay();
         if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-          const existing = await db.collection('attendance').findOne({
-            tenantId: new ObjectId(tenantId),
-            employeeId: request.employeeId,
+          const tenantObjectId = new ObjectId(tenantId);
+          const employeeObjectId = request.employeeId;
+
+          // 1. Upsert attendance record
+          const existingAtt = await db.collection('attendance').findOne({
+            tenantId: tenantObjectId,
+            employeeId: employeeObjectId,
             date: dayDate,
           });
 
-          if (existing) {
-            // Don't overwrite a PRESENT/LATE clock-in that already happened
-            if (existing.clockIn) {
-              // Update status only — person already checked in; mark it as on-leave context
+          if (existingAtt) {
+            if (existingAtt.clockIn) {
               await db.collection('attendance').updateOne(
-                { _id: existing._id },
+                { _id: existingAtt._id },
                 {
                   $set: {
                     status: 'ABSENT',
@@ -790,11 +792,10 @@ router.patch('/leave-requests/:id', async (req, res, next) => {
               );
             }
           } else {
-            // No record exists — create one as ABSENT for this leave day
             await db.collection('attendance').insertOne({
-              tenantId: new ObjectId(tenantId),
-              employeeId: request.employeeId,
-              userId: request.employeeId, // self-referencing for leave
+              tenantId: tenantObjectId,
+              employeeId: employeeObjectId,
+              userId: employeeObjectId,
               date: dayDate,
               clockIn: null,
               clockOut: null,
@@ -806,6 +807,47 @@ router.patch('/leave-requests/:id', async (req, res, next) => {
               notes: `[Nghỉ phép] ${request.type}`,
               createdAt: now,
               updatedAt: now,
+            });
+          }
+
+          // 2. Upsert schedule entry with shiftType OFF
+          const existingSched = await db.collection('schedules').findOne({
+            tenantId: tenantObjectId,
+            employeeId: employeeObjectId,
+            date: dayDate,
+          });
+
+          if (existingSched) {
+            await db.collection('schedules').updateOne(
+              { _id: existingSched._id },
+              {
+                $set: {
+                  shiftType: 'OFF',
+                  startTime: null,
+                  endTime: null,
+                  isOverridden: true,
+                  leaveRequestId: requestId,
+                  'meta.updatedBy': new ObjectId(userId),
+                  'meta.updatedAt': now,
+                },
+              }
+            );
+          } else {
+            await db.collection('schedules').insertOne({
+              tenantId: tenantObjectId,
+              employeeId: employeeObjectId,
+              date: dayDate,
+              shiftType: 'OFF',
+              startTime: null,
+              endTime: null,
+              isOverridden: false,
+              leaveRequestId: requestId,
+              meta: {
+                createdBy: new ObjectId(userId),
+                createdAt: now,
+                updatedBy: new ObjectId(userId),
+                updatedAt: now,
+              },
             });
           }
         }

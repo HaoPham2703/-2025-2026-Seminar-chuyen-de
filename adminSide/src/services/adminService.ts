@@ -100,11 +100,17 @@ export const adminService = {
     return response.data || { records: [], total: 0 }
   },
 
-  async getAllLeaveRequests(status?: string): Promise<{ requests: LeaveRequest[]; total: number }> {
-    let url = '/admin/leave-requests'
+  async getAllLeaveRequests(status?: string, limit?: number): Promise<{ requests: LeaveRequest[]; total: number }> {
+    const params = new URLSearchParams()
     if (status) {
-      url += `?status=${status}`
+      params.append('status', status)
     }
+    if (limit && Number.isFinite(limit)) {
+      params.append('limit', String(limit))
+    }
+
+    const query = params.toString()
+    const url = query ? `/admin/leave-requests?${query}` : '/admin/leave-requests'
     const response = await api.get<{ requests: LeaveRequest[]; total: number }>(url)
     return response.data || { requests: [], total: 0 }
   },

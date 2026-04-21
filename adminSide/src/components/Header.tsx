@@ -1,5 +1,4 @@
-import { Calendar, Globe, Search } from 'lucide-react'
-import { useState } from 'react'
+import { Calendar, Globe } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useLanguage } from '../contexts/LanguageContext'
@@ -9,8 +8,6 @@ export default function Header() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
   const { language, setLanguage } = useLanguage()
-  const [showSearch, setShowSearch] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
   const userInitial = user?.firstName?.[0] || user?.email?.[0] || 'A'
 
   const toggleLanguage = () => {
@@ -20,14 +17,6 @@ export default function Header() {
   const handleSchedule = () => {
     console.log('🔵 Header: Schedule clicked')
     navigate('/schedule')
-  }
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (searchQuery.trim()) {
-      // TODO: Implement search functionality
-      console.log('Search:', searchQuery)
-    }
   }
 
   return (
@@ -58,33 +47,6 @@ export default function Header() {
           >
             <Globe size={20} />
           </button>
-          {showSearch ? (
-            <form onSubmit={handleSearch} className="flex items-center gap-2">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('common.search')}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                autoFocus
-              />
-              <button
-                type="button"
-                onClick={() => setShowSearch(false)}
-                className="text-gray-600 hover:text-gray-900"
-              >
-                Cancel
-              </button>
-            </form>
-          ) : (
-            <button 
-              type="button"
-              onClick={() => setShowSearch(true)}
-              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
-            >
-              <Search size={20} />
-            </button>
-          )}
           <button 
             type="button"
             onClick={handleSchedule}

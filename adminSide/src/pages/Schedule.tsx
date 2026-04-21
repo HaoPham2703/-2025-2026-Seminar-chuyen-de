@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { ChevronRight, Search, ChevronLeft, ChevronRight as ChevronRightIcon } from 'lucide-react'
-import { adminService, type Employee } from '../services/adminService'
+import { Search } from 'lucide-react'
+import { adminService, type Employee, type LeaveRequest } from '../services/adminService'
 import {
   getWeekSchedules,
   upsertDailySchedule,
@@ -24,6 +24,7 @@ export default function Schedule() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [approvedLeaveRequests, setApprovedLeaveRequests] = useState<LeaveRequest[]>([])
 
   // ─── State: Week Navigation ──────────────────────────────────────────────
   const [selectedWeek, setSelectedWeek] = useState(() => {
@@ -78,6 +79,18 @@ export default function Schedule() {
       }
     }
     loadEmployees()
+  }, [])
+
+  useEffect(() => {
+    const loadApprovedLeaves = async () => {
+      try {
+        const data = await adminService.getAllLeaveRequests('APPROVED', 500)
+        setApprovedLeaveRequests(data.requests || [])
+      } catch (err) {
+        console.error('Failed to load approved leave requests:', err)
+      }
+    }
+    loadApprovedLeaves()
   }, [])
 
   // ─── Load Week Schedules ────────────────────────────────────────────────
@@ -144,11 +157,50 @@ export default function Schedule() {
     setSelectedWeek(newDate)
   }
 
+  const toLocalDateStr = (date: Date): string => {
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+      .toISOString()
+      .split('T')[0]
+  }
+
   const getScheduleForCell = (employeeId: string, date: Date): DailySchedule | null => {
-    const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-    const dateStr = localDate.toISOString().split('T')[0]
+    const dateStr = toLocalDateStr(date)
     return weekSchedules[employeeId]?.[dateStr] || null
   }
+
+  const toDateOnly = (value: string): string => {
+    if (!value) return ''
+    return value.length >= 10 ? value.slice(0, 10) : value
+  }
+
+  const hasApprovedLeaveOnDate = (employeeId: string, dateStr: string): boolean => {
+    return approvedLeaveRequests.some((request) => {
+      if (request.employeeId !== employeeId) return false
+      const startDate = toDateOnly(request.startDate)
+      const endDate = toDateOnly(request.endDate)
+      if (!startDate || !endDate) return false
+      return startDate <= dateStr && dateStr <= endDate
+    })
+  }
+
+  const leaveConflicts = filteredEmployees.flatMap((employee) =>
+    weekDates.flatMap((date) => {
+      const dateStr = toLocalDateStr(date)
+      const schedule = weekSchedules[employee._id]?.[dateStr] || null
+      const hasApprovedLeave = hasApprovedLeaveOnDate(employee._id, dateStr)
+      const needsScheduleAttention = hasApprovedLeave && (!schedule || schedule.shiftType !== 'OFF')
+
+      if (!needsScheduleAttention) return []
+
+      return [
+        {
+          key: `${employee._id}-${dateStr}`,
+          employeeName: employee.name,
+          dateStr,
+        },
+      ]
+    })
+  )
 
   const openScheduleModal = (employeeId: string, employeeName: string, date: Date) => {
     const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
@@ -222,6 +274,11 @@ export default function Schedule() {
     })
   }
 
+  const formatDateFromIso = (dateStr: string) => {
+    const d = new Date(`${dateStr}T00:00:00`)
+    return formatDateFull(d)
+  }
+
   const formatChangedAt = (dateStr: string) => {
     return new Date(dateStr).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US', {
       day: '2-digit',
@@ -276,7 +333,6 @@ export default function Schedule() {
               const diff = day === 0 ? -6 : 1 - day
               now.setDate(now.getDate() + diff)
               return now
-              return monday
             })}
             className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer text-sm"
           >
@@ -339,6 +395,32 @@ export default function Schedule() {
             </div>
           </div>
 
+          {leaveConflicts.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <p className="text-sm font-semibold text-amber-800">
+                Có {leaveConflicts.length} ca đang cần xử lý: nhân viên đã được duyệt nghỉ nhưng lịch chưa đặt OFF.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {leaveConflicts.slice(0, 8).map((conflict) => (
+                  <span
+                    key={conflict.key}
+                    className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-800 px-2 py-1 text-xs"
+                  >
+                    <span className="font-bold">!</span>
+                    <span>{conflict.employeeName}</span>
+                    <span>-</span>
+                    <span>{formatDateFromIso(conflict.dateStr)}</span>
+                  </span>
+                ))}
+                {leaveConflicts.length > 8 && (
+                  <span className="text-xs text-amber-700">
+                    +{leaveConflicts.length - 8} mục nữa
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Calendar Grid */}
           <div className="bg-white rounded-xl shadow overflow-hidden">
             {/* Header Row */}
@@ -382,15 +464,26 @@ export default function Schedule() {
                     {weekDates.map((date, dayIdx) => {
                       const isToday = date.toDateString() === new Date().toDateString()
                       const schedule = getScheduleForCell(employee._id, date)
+                      const dateStr = toLocalDateStr(date)
+                      const hasApprovedLeave = hasApprovedLeaveOnDate(employee._id, dateStr)
+                      const needsScheduleAttention = hasApprovedLeave && (!schedule || schedule.shiftType !== 'OFF')
 
                       return (
                         <div
                           key={dayIdx}
                           onClick={() => openScheduleModal(employee._id, employee.name, date)}
-                          className={`bg-white p-2 text-center cursor-pointer hover:bg-blue-50 transition-colors min-h-[56px] flex items-center justify-center ${
+                          className={`relative bg-white p-2 text-center cursor-pointer hover:bg-blue-50 transition-colors min-h-[56px] flex items-center justify-center ${
                             isToday ? 'bg-orange-50' : ''
-                          } ${schedule ? '' : ''}`}
+                          } ${needsScheduleAttention ? 'ring-1 ring-amber-400 bg-amber-50/50' : ''}`}
                         >
+                          {needsScheduleAttention && (
+                            <span
+                              className="absolute top-1 right-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-amber-500 text-white text-[10px] font-bold"
+                              title="Đã duyệt nghỉ phép, cần đặt OFF cho ngày này"
+                            >
+                              !
+                            </span>
+                          )}
                           {schedule ? (
                             <div className="w-full">
                               <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-semibold ${SHIFT_COLORS[schedule.shiftType] || 'bg-gray-100 text-gray-700'}`}>
@@ -401,10 +494,17 @@ export default function Schedule() {
                                   {schedule.startTime}–{schedule.endTime}
                                 </div>
                               )}
+                              {needsScheduleAttention && (
+                                <div className="text-[10px] text-amber-700 font-semibold mt-0.5">
+                                  Nghỉ đã duyệt - cần OFF
+                                </div>
+                              )}
                             </div>
                           ) : (
-                            <div className="text-xs text-gray-300">
-                              {t('schedule.default') || '9:00-18:00'}
+                            <div className={`text-xs ${needsScheduleAttention ? 'text-amber-700 font-semibold' : 'text-gray-300'}`}>
+                              {needsScheduleAttention
+                                ? 'Đã duyệt nghỉ - bấm để đặt OFF'
+                                : (t('schedule.default') || '9:00-18:00')}
                             </div>
                           )}
                         </div>
@@ -424,6 +524,10 @@ export default function Schedule() {
                 <span className="text-xs text-gray-600">{getShiftLabel(type)}</span>
               </div>
             ))}
+            <div className="flex items-center gap-1.5">
+              <span className="inline-flex items-center justify-center w-3 h-3 rounded-full bg-amber-500 text-white text-[9px] font-bold">!</span>
+              <span className="text-xs text-gray-600">Đã duyệt nghỉ phép, cần xếp OFF</span>
+            </div>
           </div>
 
           {/* Info box */}

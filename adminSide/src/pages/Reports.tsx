@@ -14,10 +14,20 @@ interface ReportStats {
   approvedLeaveRequests: number
   rejectedLeaveRequests: number
   departments: number
+  // New fields
+  payrollTotalGross: number
+  payrollTotalNet: number
+  payrollPaidCount: number
+  payrollDraftCount: number
+  payrollPendingCount: number
+  departmentBreakdown: { name: string; count: number }[]
+  activeEmployees: number
+  inactiveEmployees: number
 }
 
 export default function Reports() {
   const [stats, setStats] = useState<ReportStats | null>(null)
+  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -38,41 +48,60 @@ export default function Reports() {
     try {
       setIsLoading(true)
       setError(null)
-      console.log('🔄 Loading reports data...')
 
-      // Load all data in parallel
-      const [employeesData, attendanceData, leaveRequestsData] = await Promise.all([
+      const [employeesData, leaveRequestsData] = await Promise.all([
         adminService.getAllEmployees(),
-        adminService.getTodayAttendance(),
         adminService.getAllLeaveRequests(),
       ])
-
-      console.log('✅ Reports data loaded')
 
       setEmployees(employeesData.employees || [])
       setLeaveRequests(leaveRequestsData.requests || [])
 
-      // Calculate statistics
-      const attendanceRecords = attendanceData.records || []
-      const presentCount = attendanceRecords.filter(
+      // Attendance: fetch each day in range
+      const allRecords: any[] = []
+      const current = new Date(dateRange.start)
+      const end = new Date(dateRange.end)
+      while (current <= end) {
+        const dateStr = current.toISOString().split('T')[0]
+        try {
+          const dayData = await adminService.getAttendanceByDate(dateStr)
+          allRecords.push(...(dayData.records || []))
+        } catch {
+          // ignore day errors
+        }
+        current.setDate(current.getDate() + 1)
+      }
+      setAttendanceRecords(allRecords)
+
+      // Attendance stats
+      const presentCount = allRecords.filter(
         (r: any) => r.status === 'PRESENT' || r.clockIn
       ).length
-      const absentCount = attendanceRecords.filter(
-        (r: any) => r.status === 'ABSENT' || !r.clockIn
+      const absentCount = allRecords.filter(
+        (r: any) => r.status === 'ABSENT' || (!r.clockIn && r.employeeId)
       ).length
-      const lateCount = attendanceRecords.filter((r: any) => r.status === 'LATE').length
+      const lateCount = allRecords.filter((r: any) => r.status === 'LATE').length
 
-      // Group employees by department
-      const departmentSet = new Set<string>()
+      // Department breakdown
+      const deptMap = new Map<string, number>()
       employeesData.employees.forEach((emp) => {
-        if (emp.department && emp.department !== 'N/A') {
-          departmentSet.add(emp.department)
-        }
+        const dept = emp.department || 'Khác'
+        deptMap.set(dept, (deptMap.get(dept) || 0) + 1)
       })
+      const departmentBreakdown = Array.from(deptMap.entries())
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count)
+
+      // Employee stats
+      const activeEmployees = employeesData.employees.filter(
+        (e: any) => e.status === 'ACTIVE'
+      ).length
 
       const reportStats: ReportStats = {
         totalEmployees: employeesData.total,
-        totalAttendance: attendanceRecords.length,
+        activeEmployees,
+        inactiveEmployees: employeesData.total - activeEmployees,
+        totalAttendance: allRecords.length,
         presentCount,
         absentCount,
         lateCount,
@@ -86,7 +115,13 @@ export default function Reports() {
         rejectedLeaveRequests: leaveRequestsData.requests.filter(
           (lr) => lr.status === 'REJECTED'
         ).length,
-        departments: departmentSet.size,
+        departments: departmentBreakdown.length,
+        departmentBreakdown,
+        payrollTotalGross: 0,
+        payrollTotalNet: 0,
+        payrollPaidCount: 0,
+        payrollDraftCount: 0,
+        payrollPendingCount: 0,
       }
 
       setStats(reportStats)
@@ -114,14 +149,15 @@ export default function Reports() {
     )
   }
 
-  if (!stats) {
-    return null
-  }
+  if (!stats) return null
 
   const attendanceRate =
     stats.totalEmployees > 0
-      ? ((stats.presentCount / stats.totalEmployees) * 100).toFixed(1)
+      ? ((stats.presentCount / stats.totalAttendance) * 100).toFixed(1)
       : '0'
+
+  const fmt = (n: number) =>
+    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n)
 
   return (
     <div className="space-y-6">
@@ -139,7 +175,7 @@ export default function Reports() {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-600">
-              {t('reports.from') || 'From'}:
+              {t('reports.from') || 'Từ'}:
             </label>
             <input
               type="date"
@@ -151,7 +187,7 @@ export default function Reports() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600">{t('reports.to') || 'To'}:</label>
+            <label className="text-sm text-gray-600">{t('reports.to') || 'Đến'}:</label>
             <input
               type="date"
               value={dateRange.end}
@@ -172,148 +208,181 @@ export default function Reports() {
       </div>
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm text-gray-600">
-                {t('reports.totalEmployees') || 'Total Employees'}
-              </div>
-              <div className="text-3xl font-bold text-gray-900 mt-2">
-                {stats.totalEmployees}
-              </div>
-            </div>
-            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-              <span className="text-2xl">👥</span>
-            </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="bg-white p-4 rounded-lg shadow">
+          <div className="text-xs text-gray-500 mb-1">Tổng nhân viên</div>
+          <div className="text-2xl font-bold text-gray-900">{stats.totalEmployees}</div>
+          <div className="text-xs text-gray-400 mt-1">
+            👤 {stats.activeEmployees} active · {stats.inactiveEmployees} inactive
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm text-gray-600">
-                {t('reports.attendanceRate') || 'Attendance Rate'}
-              </div>
-              <div className="text-3xl font-bold text-green-600 mt-2">
-                {attendanceRate}%
-              </div>
-            </div>
-            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-              <span className="text-2xl">✓</span>
-            </div>
+        <div className="bg-white p-4 rounded-lg shadow">
+          <div className="text-xs text-gray-500 mb-1">Tỷ lệ có mặt</div>
+          <div className="text-2xl font-bold text-green-600">{attendanceRate}%</div>
+          <div className="text-xs text-gray-400 mt-1">trong kỳ báo cáo</div>
+        </div>
+
+        <div className="bg-white p-4 rounded-lg shadow">
+          <div className="text-xs text-gray-500 mb-1">Đi muộn</div>
+          <div className="text-2xl font-bold text-yellow-600">{stats.lateCount}</div>
+          <div className="text-xs text-gray-400 mt-1">lần</div>
+        </div>
+
+        <div className="bg-white p-4 rounded-lg shadow">
+          <div className="text-xs text-gray-500 mb-1">Nghỉ phép</div>
+          <div className="text-2xl font-bold text-blue-600">{stats.totalLeaveRequests}</div>
+          <div className="text-xs text-gray-400 mt-1">
+            {stats.pendingLeaveRequests} chờ duyệt
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm text-gray-600">
-                {t('reports.pendingRequests') || 'Pending Requests'}
-              </div>
-              <div className="text-3xl font-bold text-yellow-600 mt-2">
-                {stats.pendingLeaveRequests}
-              </div>
-            </div>
-            <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
-              <span className="text-2xl">⏳</span>
-            </div>
-          </div>
+        <div className="bg-white p-4 rounded-lg shadow">
+          <div className="text-xs text-gray-500 mb-1">Phòng ban</div>
+          <div className="text-2xl font-bold text-purple-600">{stats.departments}</div>
+          <div className="text-xs text-gray-400 mt-1">phòng ban</div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm text-gray-600">
-                {t('departments.totalDepartments')}
-              </div>
-              <div className="text-3xl font-bold text-purple-600 mt-2">
-                {stats.departments}
-              </div>
-            </div>
-            <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
-              <span className="text-2xl">🏢</span>
-            </div>
-          </div>
+        <div className="bg-white p-4 rounded-lg shadow">
+          <div className="text-xs text-gray-500 mb-1">Bản ghi chấm công</div>
+          <div className="text-2xl font-bold text-gray-900">{stats.totalAttendance}</div>
+          <div className="text-xs text-gray-400 mt-1">trong kỳ</div>
         </div>
       </div>
 
       {/* Detailed Statistics */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Attendance Statistics */}
+        {/* Attendance */}
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            {t('reports.attendanceStats') || 'Attendance Statistics'}
-          </h2>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600">{t('dashboard.present')}</span>
-              <span className="text-lg font-semibold text-green-600">
-                {stats.presentCount}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600">{t('status.late')}</span>
-              <span className="text-lg font-semibold text-yellow-600">
-                {stats.lateCount}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600">{t('status.absent')}</span>
-              <span className="text-lg font-semibold text-red-600">
-                {stats.absentCount}
-              </span>
-            </div>
-            <div className="pt-4 border-t border-gray-200">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-900 font-medium">
-                  {t('reports.totalAttendance') || 'Total Attendance Records'}
-                </span>
-                <span className="text-lg font-semibold text-gray-900">
-                  {stats.totalAttendance}
-                </span>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Chấm công</h2>
+          <div className="space-y-3">
+            {[
+              { label: 'Có mặt', value: stats.presentCount, color: 'text-green-600', bg: 'bg-green-50' },
+              { label: 'Đi muộn', value: stats.lateCount, color: 'text-yellow-600', bg: 'bg-yellow-50' },
+              { label: 'Vắng', value: stats.absentCount, color: 'text-red-600', bg: 'bg-red-50' },
+            ].map((row) => (
+              <div key={row.label} className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${row.bg} ${row.color}`}>
+                    {row.value}
+                  </div>
+                  <span className="text-gray-600">{row.label}</span>
+                </div>
+                <span className={`text-lg font-semibold ${row.color}`}>{row.value}</span>
               </div>
-            </div>
+            ))}
           </div>
         </div>
 
-        {/* Leave Requests Statistics */}
+        {/* Leave Requests */}
         <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            {t('reports.leaveRequestsStats') || 'Leave Requests Statistics'}
-          </h2>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600">{t('common.pending')}</span>
-              <span className="text-lg font-semibold text-yellow-600">
-                {stats.pendingLeaveRequests}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600">{t('common.approved')}</span>
-              <span className="text-lg font-semibold text-green-600">
-                {stats.approvedLeaveRequests}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-gray-600">{t('common.rejected')}</span>
-              <span className="text-lg font-semibold text-red-600">
-                {stats.rejectedLeaveRequests}
-              </span>
-            </div>
-            <div className="pt-4 border-t border-gray-200">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-900 font-medium">
-                  {t('reports.totalRequests') || 'Total Requests'}
-                </span>
-                <span className="text-lg font-semibold text-gray-900">
-                  {stats.totalLeaveRequests}
-                </span>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Nghỉ phép</h2>
+          <div className="space-y-3">
+            {[
+              { label: 'Chờ duyệt', value: stats.pendingLeaveRequests, color: 'text-yellow-600', bg: 'bg-yellow-50' },
+              { label: 'Đã duyệt', value: stats.approvedLeaveRequests, color: 'text-green-600', bg: 'bg-green-50' },
+              { label: 'Từ chối', value: stats.rejectedLeaveRequests, color: 'text-red-600', bg: 'bg-red-50' },
+            ].map((row) => (
+              <div key={row.label} className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${row.bg} ${row.color}`}>
+                    {row.value}
+                  </div>
+                  <span className="text-gray-600">{row.label}</span>
+                </div>
+                <span className={`text-lg font-semibold ${row.color}`}>{row.value}</span>
               </div>
-            </div>
+            ))}
           </div>
         </div>
       </div>
+
+      {/* Department Breakdown */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Phân bổ nhân viên theo phòng ban</h2>
+        <div className="space-y-3">
+          {stats.departmentBreakdown.map((dept) => {
+            const pct = stats.totalEmployees > 0
+              ? ((dept.count / stats.totalEmployees) * 100).toFixed(1)
+              : '0'
+            return (
+              <div key={dept.name}>
+                <div className="flex justify-between text-sm mb-1">
+                  <span className="text-gray-700 font-medium">{dept.name}</span>
+                  <span className="text-gray-500">{dept.count} nhân viên ({pct}%)</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2">
+                  <div
+                    className="bg-blue-500 h-2 rounded-full transition-all"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+              </div>
+            )
+          })}
+          {stats.departmentBreakdown.length === 0 && (
+            <p className="text-gray-400 text-sm">Không có dữ liệu phòng ban</p>
+          )}
+        </div>
+      </div>
+
+      {/* Attendance Records Table */}
+      {attendanceRecords.length > 0 && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            Bản ghi chấm công gần đây
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-2 px-3 text-gray-600 font-medium">Ngày</th>
+                  <th className="text-left py-2 px-3 text-gray-600 font-medium">Mã NV</th>
+                  <th className="text-left py-2 px-3 text-gray-600 font-medium">Nhân viên</th>
+                  <th className="text-left py-2 px-3 text-gray-600 font-medium">Giờ vào</th>
+                  <th className="text-left py-2 px-3 text-gray-600 font-medium">Giờ ra</th>
+                  <th className="text-left py-2 px-3 text-gray-600 font-medium">Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody>
+                {attendanceRecords.slice(0, 20).map((r: any, i: number) => (
+                  <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className="py-2 px-3 text-gray-700">{r.date || r.clockIn?.time?.split('T')[0] || '—'}</td>
+                    <td className="py-2 px-3 text-gray-500">{r.employeeId || '—'}</td>
+                    <td className="py-2 px-3 font-medium text-gray-900">{r.name || r.employeeName || '—'}</td>
+                    <td className="py-2 px-3 text-gray-700">
+                      {r.clockIn?.time
+                        ? new Date(r.clockIn.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+                        : '—'}
+                    </td>
+                    <td className="py-2 px-3 text-gray-700">
+                      {r.clockOut?.time
+                        ? new Date(r.clockOut.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+                        : '—'}
+                    </td>
+                    <td className="py-2 px-3">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        r.status === 'PRESENT' || r.clockIn
+                          ? 'bg-green-100 text-green-700'
+                          : r.status === 'LATE'
+                          ? 'bg-yellow-100 text-yellow-700'
+                          : 'bg-red-100 text-red-700'
+                      }`}>
+                        {r.status === 'PRESENT' || r.clockIn ? 'Có mặt' : r.status === 'LATE' ? 'Muộn' : 'Vắng'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {attendanceRecords.length > 20 && (
+              <p className="text-gray-400 text-xs mt-2 text-center">
+                Hiển thị 20/{attendanceRecords.length} bản ghi
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

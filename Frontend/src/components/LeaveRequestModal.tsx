@@ -24,7 +24,6 @@ interface LeaveRequestModalProps {
 
 const LEAVE_TYPES = [
   { value: 'ANNUAL', label: 'Nghỉ phép năm' },
-  { value: 'SICK', label: 'Nghỉ bệnh' },
   { value: 'UNPAID', label: 'Nghỉ không lương' },
   { value: 'OTHER', label: 'Khác' },
 ];
