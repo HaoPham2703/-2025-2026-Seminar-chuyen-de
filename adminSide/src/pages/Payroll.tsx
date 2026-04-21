@@ -222,7 +222,7 @@ export default function Payroll() {
       const dept = departments.find((d) => d._id === departmentId)
       const data = await getDepartmentEmployees(departmentId)
       const mapped = data.employees.map((emp) => ({
-        id: emp.employeeId,
+        id: emp._id,
         name: emp.name,
         code: emp.employeeId,
         position: emp.position,
@@ -511,11 +511,6 @@ export default function Payroll() {
       return
     }
 
-    if (!formBaseSalary) {
-      alert('Vui lòng nhập lương cơ bản mẫu trước khi tạo hàng loạt')
-      return
-    }
-
     const confirmed = window.confirm(`Tạo phiếu lương cho ${targetEmployeeIds.length} nhân viên đã chọn?`)
     if (!confirmed) return
 
@@ -531,7 +526,6 @@ export default function Payroll() {
       const result: BulkPayrollResult = await createBulkPayroll({
         employeeIds: targetEmployeeIds,
         period: { month: formMonth, year: formYear },
-        baseSalary: parseFloat(formBaseSalary),
         allowances,
         deductions,
         status: formStatus,
@@ -997,20 +991,26 @@ export default function Payroll() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {t('payroll.baseSalary') || 'Lương cơ bản'} (VND) *
-                </label>
-                <input
-                  type="number"
-                  value={formBaseSalary}
-                  onChange={(e) => setFormBaseSalary(e.target.value)}
-                  placeholder="10000000"
-                  required
-                  min="0"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+              {modalMode !== 'bulkCreate' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {t('payroll.baseSalary') || 'Lương cơ bản'} (VND) *
+                  </label>
+                  <input
+                    type="number"
+                    value={formBaseSalary}
+                    onChange={(e) => setFormBaseSalary(e.target.value)}
+                    placeholder="10000000"
+                    required
+                    min="0"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              ) : (
+                <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                  Lương cơ bản sẽ tự lấy theo chức vụ của từng nhân viên.
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">

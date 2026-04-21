@@ -16,6 +16,21 @@ async function getEmployeeForUser(db, userId, tenantId) {
   });
 }
 
+async function resolveEmployeeBaseSalary(db, tenantObjectId, employee) {
+  const positionName = employee?.position || employee?.employment?.position || '';
+  if (positionName) {
+    const position = await db.collection('positions').findOne(
+      { tenantId: tenantObjectId, name: positionName },
+      { projection: { baseSalary: 1 } }
+    );
+    if (position?.baseSalary !== undefined && position?.baseSalary !== null) {
+      return roundMoney(position.baseSalary);
+    }
+  }
+
+  return roundMoney(employee?.baseSalary ?? employee?.employment?.baseSalary ?? 0);
+}
+
 function normalizeMoney(value) {
   const num = Number(value || 0);
   return Number.isFinite(num) ? num : 0;
@@ -536,7 +551,7 @@ router.post('/', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req,
 router.post('/bulk', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
   try {
     const { tenantId, userId } = req.user;
-    const { employeeIds = [], period, baseSalary, allowances = [], deductions = [], status = 'DRAFT' } = req.body;
+    const { employeeIds = [], period, allowances = [], deductions = [], status = 'DRAFT' } = req.body;
 
     if (!Array.isArray(employeeIds) || employeeIds.length === 0) {
       return res.status(400).json({ success: false, message: 'employeeIds must be non-empty array' });
@@ -545,17 +560,11 @@ router.post('/bulk', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (
       return res.status(400).json({ success: false, message: 'period.month/year required' });
     }
 
-    // Validation: baseSalary không được âm
-    if (normalizeMoney(baseSalary) < 0) {
-      return res.status(400).json({ success: false, message: 'baseSalary không được âm' });
-    }
-
     const db = getDatabase();
     const tenantObjectId = new ObjectId(tenantId);
     const periodMonth = parseInt(period.month, 10);
     const periodYear = parseInt(period.year, 10);
     const now = new Date();
-    const base = normalizeMoney(baseSalary);
     const allowancesTotal = sumAmount(allowances);
     const deductionsTotal = sumAmount(deductions);
     const results = { created: [], failed: [] };
@@ -574,16 +583,32 @@ router.post('/bulk', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (
           results.failed.push({ employeeId: employeeIdStr, reason: 'Đã có phiếu lương tháng này' });
           continue;
         }
+
+        const employee = await db.collection('employees').findOne(
+          { _id: employeeObjectId, tenantId: tenantObjectId },
+          { projection: { position: 1, baseSalary: 1, 'employment.position': 1, 'employment.baseSalary': 1 } }
+        );
+        if (!employee) {
+          results.failed.push({ employeeId: employeeIdStr, reason: 'Employee not found' });
+          continue;
+        }
+
+        const baseSalaryByPosition = await resolveEmployeeBaseSalary(db, tenantObjectId, employee);
+        if (baseSalaryByPosition < 0) {
+          results.failed.push({ employeeId: employeeIdStr, reason: 'baseSalary không được âm' });
+          continue;
+        }
+
         const doc = {
           tenantId: tenantObjectId,
           employeeId: employeeObjectId,
           period: { month: periodMonth, year: periodYear },
-          baseSalary: base,
+          baseSalary: baseSalaryByPosition,
           allowances,
           deductions,
           allowancesTotal,
           deductionsTotal,
-          netSalary: base + allowancesTotal - deductionsTotal,
+          netSalary: baseSalaryByPosition + allowancesTotal - deductionsTotal,
           status,
           approvedAt: now,
           createdAt: now,

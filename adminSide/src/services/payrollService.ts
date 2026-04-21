@@ -223,7 +223,6 @@ export interface BulkPayrollResult {
 export async function createBulkPayroll(data: {
   employeeIds: string[]
   period: PayrollPeriod
-  baseSalary: number
   allowances?: PayrollItem[]
   deductions?: PayrollItem[]
   status?: 'DRAFT' | 'PENDING' | 'APPROVED'
