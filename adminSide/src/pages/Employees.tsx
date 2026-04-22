@@ -222,9 +222,6 @@ export default function Employees() {
               baseSalary: matchedPos.baseSalary.toString(),
             }))
           } else {
-            // Position name didn't match (maybe position was renamed)
-            // Try by position name directly
-            const fallback = loadedPositions.find(p => p.name === emp.position)
             setFormData(prev => ({ ...prev, departmentId: dept._id }))
           }
         }
@@ -309,6 +306,7 @@ export default function Employees() {
           position: formData.position,
           positionId: formData.positionId,
           phone: formData.phone,
+          baseSalary: formData.baseSalary ? Number(formData.baseSalary) : undefined,
         })
         setFormSuccess('✅ Cập nhật nhân viên thành công!')
       }

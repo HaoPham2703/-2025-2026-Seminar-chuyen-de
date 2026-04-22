@@ -9,6 +9,10 @@ const router = express.Router();
 router.use(authenticateToken);
 router.use(tenantIsolation);
 
+function getEmployeePositionName(employee) {
+  return String(employee?.position || employee?.employment?.position || '').trim();
+}
+
 async function getEmployeeForUser(db, userId, tenantId) {
   return db.collection('employees').findOne({
     userId: new ObjectId(userId),
@@ -17,7 +21,7 @@ async function getEmployeeForUser(db, userId, tenantId) {
 }
 
 async function resolveEmployeeBaseSalary(db, tenantObjectId, employee) {
-  const positionName = employee?.position || employee?.employment?.position || '';
+  const positionName = getEmployeePositionName(employee);
   if (positionName) {
     const position = await db.collection('positions').findOne(
       { tenantId: tenantObjectId, name: positionName },
@@ -42,6 +46,25 @@ function sumAmount(items = []) {
 
 function roundMoney(value) {
   return Math.round(normalizeMoney(value));
+}
+
+const WRITEABLE_PAYROLL_STATUSES = new Set(['PENDING', 'APPROVED']);
+
+function normalizeWriteablePayrollStatus(status, fallback = 'PENDING') {
+  const normalized = String(status || '').trim().toUpperCase();
+  if (normalized === 'DRAFT') return 'PENDING';
+  if (WRITEABLE_PAYROLL_STATUSES.has(normalized)) return normalized;
+  return fallback;
+}
+
+function normalizePayrollItems(items = []) {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item) => ({
+      name: String(item?.name || '').trim(),
+      amount: roundMoney(item?.amount),
+    }))
+    .filter((item) => item.name && Number.isFinite(item.amount));
 }
 
 /**
@@ -157,17 +180,27 @@ router.get('/', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, 
 
 /**
  * GET /api/payrolls/employees
- * Lấy danh sách nhân viên để chọn khi tạo payroll (admin)
+ * Lấy danh sách nhân viên đềEchọn khi tạo payroll (admin)
  */
 router.get('/employees', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
   try {
     const { tenantId } = req.user;
     const db = getDatabase();
+    const tenantObjectId = new ObjectId(tenantId);
 
     const employees = await db
       .collection('employees')
-      .find({ tenantId: new ObjectId(tenantId) })
-      .project({ userId: 1, 'personalInfo.firstName': 1, 'personalInfo.lastName': 1, employeeId: 1, 'employment.position': 1, 'employment.baseSalary': 1 })
+      .find({ tenantId: tenantObjectId })
+      .project({
+        userId: 1,
+        employeeId: 1,
+        position: 1,
+        baseSalary: 1,
+        'personalInfo.firstName': 1,
+        'personalInfo.lastName': 1,
+        'employment.position': 1,
+        'employment.baseSalary': 1,
+      })
       .toArray();
 
     // Lấy email từ users collection
@@ -178,15 +211,35 @@ router.get('/employees', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), asy
       .project({ _id: 1, email: 1 })
       .toArray();
     const userMap = Object.fromEntries(users.map((u) => [u._id.toString(), u.email]));
+    const positionNames = [...new Set(
+      employees
+        .map((e) => getEmployeePositionName(e))
+        .filter(Boolean)
+    )];
+    const positions = positionNames.length
+      ? await db.collection('positions').find(
+        { tenantId: tenantObjectId, name: { $in: positionNames } },
+        { projection: { name: 1, baseSalary: 1 } }
+      ).toArray()
+      : [];
+    const positionSalaryMap = new Map(
+      positions.map((p) => [String(p.name || '').trim().toLowerCase(), roundMoney(p.baseSalary)])
+    );
 
-    const list = employees.map((e) => ({
-      id: e._id.toString(),
-      name: `${e.personalInfo?.lastName || ''} ${e.personalInfo?.firstName || ''}`.trim(),
-      code: e.employeeId || '',
-      position: e.employment?.position || '',
-      positionSalary: e.employment?.baseSalary || 0,
-      email: e.userId ? (userMap[e.userId.toString()] || '') : '',
-    }));
+    const list = employees.map((e) => {
+      const positionName = getEmployeePositionName(e);
+      const salaryByPosition = positionName
+        ? positionSalaryMap.get(positionName.toLowerCase())
+        : undefined;
+      return {
+        id: e._id.toString(),
+        name: `${e.personalInfo?.lastName || ''} ${e.personalInfo?.firstName || ''}`.trim(),
+        code: e.employeeId || '',
+        position: positionName,
+        positionSalary: salaryByPosition ?? roundMoney(e?.baseSalary ?? e?.employment?.baseSalary ?? 0),
+        email: e.userId ? (userMap[e.userId.toString()] || '') : '',
+      };
+    });
 
     res.json({ success: true, data: { employees: list } });
   } catch (error) {
@@ -305,7 +358,9 @@ router.post('/auto-calculate', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN
     const absentCount = absentIncidents.length;
     const attendanceDays = attendanceRows.filter((row) => Number(row.workDuration || 0) > 0).length;
 
-    const monthlyBaseSalary = roundMoney(baseSalary ?? employee.employment?.baseSalary ?? 0);
+    const monthlyBaseSalary = baseSalary !== undefined && baseSalary !== null && baseSalary !== ''
+      ? roundMoney(baseSalary)
+      : await resolveEmployeeBaseSalary(db, tenantObjectId, employee);
     const standardHours = effectiveFormula.standardWorkingDays * 8;
     const hourlyRate = standardHours > 0 ? monthlyBaseSalary / standardHours : 0;
     const shiftSalary = effectiveFormula.standardWorkingDays > 0
@@ -316,7 +371,7 @@ router.post('/auto-calculate', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN
       (totalOvertimeMinutes / 60) * hourlyRate * effectiveFormula.overtimeMultiplier
     );
 
-    // Penalty from disciplines collection (APPROVED only → applied to payroll)
+    // Penalty from disciplines collection (APPROVED only ↁEapplied to payroll)
     const disciplineAmount = roundMoney(
       disciplineRows
         .filter(d => d.status === 'APPROVED' && d.amount != null)
@@ -330,7 +385,7 @@ router.post('/auto-calculate', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN
         amount: Number(d.amount) || 0,
       }));
 
-    // Reward from rewards collection — APPROVED = cộng vào lương, PENDING = chỉ hiển thị
+    // Reward from rewards collection  EAPPROVED = cộng vào lương, PENDING = chềEhiển thềE
     // Cả MONEY (amount) lẫn MATERIAL (itemName) đều tính
     const approvedRewardRows = rewardRows.filter(r => r.status === 'APPROVED')
     const pendingRewardRows = rewardRows.filter(r => r.status === 'PENDING')
@@ -429,7 +484,7 @@ router.post('/', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req,
       baseSalary,
       allowances = [],
       deductions = [],
-      status = 'APPROVED',
+      status = 'PENDING',
       approvedAt,
     } = req.body;
 
@@ -438,11 +493,6 @@ router.post('/', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req,
         success: false,
         message: 'employeeId, period.month and period.year are required',
       });
-    }
-
-    // Validation: baseSalary không được âm
-    if (normalizeMoney(baseSalary) < 0) {
-      return res.status(400).json({ success: false, message: 'baseSalary không được âm' });
     }
 
     const db = getDatabase();
@@ -461,6 +511,15 @@ router.post('/', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req,
       });
     }
 
+    const resolvedBaseSalary = baseSalary !== undefined && baseSalary !== null && baseSalary !== ''
+      ? roundMoney(baseSalary)
+      : await resolveEmployeeBaseSalary(db, tenantObjectId, employee);
+
+    // Validation: baseSalary không được âm
+    if (normalizeMoney(resolvedBaseSalary) < 0) {
+      return res.status(400).json({ success: false, message: 'baseSalary không được âm' });
+    }
+
     const payrollCollection = db.collection('payrolls');
     const periodMonth = parseInt(period.month, 10);
     const periodYear = parseInt(period.year, 10);
@@ -475,14 +534,15 @@ router.post('/', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req,
     if (existingPayroll) {
       return res.status(409).json({
         success: false,
-        message: 'Mỗi nhân viên chỉ được có 1 bảng lương trong cùng một tháng',
+        message: 'Mỗi nhân viên chềEđược có 1 bảng lương trong cùng một tháng',
       });
     }
 
-    const base = normalizeMoney(baseSalary);
+    const base = roundMoney(resolvedBaseSalary);
     const allowancesTotal = sumAmount(allowances);
     const deductionsTotal = sumAmount(deductions);
     const netSalary = base + allowancesTotal - deductionsTotal;
+    const nextStatus = normalizeWriteablePayrollStatus(status, 'PENDING');
 
     const now = new Date();
     const doc = {
@@ -498,7 +558,7 @@ router.post('/', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req,
       allowancesTotal,
       deductionsTotal,
       netSalary,
-      status,
+      status: nextStatus,
       approvedAt: approvedAt ? new Date(approvedAt) : now,
       createdAt: now,
       createdBy: new ObjectId(userId),
@@ -551,7 +611,19 @@ router.post('/', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req,
 router.post('/bulk', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
   try {
     const { tenantId, userId } = req.user;
-    const { employeeIds = [], period, allowances = [], deductions = [], status = 'DRAFT' } = req.body;
+    const {
+      employeeIds = [],
+      period,
+      allowances = [],
+      deductions = [],
+      status = 'PENDING',
+      autoCalculate = true,
+      overtimeMultiplier,
+      latePenaltyPerLate,
+      bhxhRate,
+      pitRate,
+      standardWorkingDays,
+    } = req.body;
 
     if (!Array.isArray(employeeIds) || employeeIds.length === 0) {
       return res.status(400).json({ success: false, message: 'employeeIds must be non-empty array' });
@@ -565,9 +637,28 @@ router.post('/bulk', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (
     const periodMonth = parseInt(period.month, 10);
     const periodYear = parseInt(period.year, 10);
     const now = new Date();
-    const allowancesTotal = sumAmount(allowances);
-    const deductionsTotal = sumAmount(deductions);
+    const manualAllowances = normalizePayrollItems(allowances);
+    const manualDeductions = normalizePayrollItems(deductions);
+    const nextStatus = normalizeWriteablePayrollStatus(status, 'PENDING');
     const results = { created: [], failed: [] };
+
+    const formulaSettings = (await db.collection('tenants').findOne(
+      { _id: tenantObjectId },
+      { projection: { payrollFormulaSettings: 1 } }
+    ))?.payrollFormulaSettings || {};
+
+    const effectiveFormula = {
+      overtimeMultiplier: Number(overtimeMultiplier ?? formulaSettings.overtimeMultiplier ?? 1.5),
+      latePenaltyPerLate: Number(latePenaltyPerLate ?? formulaSettings.latePenaltyPerLate ?? 50000),
+      bhxhRate: Number(bhxhRate ?? formulaSettings.bhxhRate ?? 0.08),
+      pitRate: Number(pitRate ?? formulaSettings.pitRate ?? 0),
+      standardWorkingDays: Number(standardWorkingDays ?? formulaSettings.standardWorkingDays ?? 22),
+    };
+
+    const start = new Date(`${periodYear}-${String(periodMonth).padStart(2, '0')}-01T00:00:00.000+07:00`);
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + 1);
+    end.setMilliseconds(-1);
 
     for (const employeeIdStr of employeeIds) {
       try {
@@ -579,8 +670,9 @@ router.post('/bulk', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (
           'period.year': periodYear,
           isSuperseded: { $ne: true },
         });
+
         if (existing) {
-          results.failed.push({ employeeId: employeeIdStr, reason: 'Đã có phiếu lương tháng này' });
+          results.failed.push({ employeeId: employeeIdStr, reason: 'Da co phieu luong thang nay' });
           continue;
         }
 
@@ -588,6 +680,7 @@ router.post('/bulk', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (
           { _id: employeeObjectId, tenantId: tenantObjectId },
           { projection: { position: 1, baseSalary: 1, 'employment.position': 1, 'employment.baseSalary': 1 } }
         );
+
         if (!employee) {
           results.failed.push({ employeeId: employeeIdStr, reason: 'Employee not found' });
           continue;
@@ -595,22 +688,158 @@ router.post('/bulk', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (
 
         const baseSalaryByPosition = await resolveEmployeeBaseSalary(db, tenantObjectId, employee);
         if (baseSalaryByPosition < 0) {
-          results.failed.push({ employeeId: employeeIdStr, reason: 'baseSalary không được âm' });
+          results.failed.push({ employeeId: employeeIdStr, reason: 'baseSalary khong duoc am' });
           continue;
         }
+
+        let calculatedAllowances = manualAllowances;
+        let calculatedDeductions = manualDeductions;
+        let attendanceSummary = null;
+        let lateIncidents = [];
+        let absentIncidents = [];
+        let disciplineBreakdown = [];
+        let rewardBreakdown = { approved: [], pending: [] };
+
+        if (autoCalculate) {
+          const [attendanceRows, disciplineRows, rewardRows] = await Promise.all([
+            db.collection('attendance').find({
+              tenantId: tenantObjectId,
+              employeeId: employeeObjectId,
+              date: { $gte: start, $lte: end },
+            }).toArray(),
+            db.collection('disciplines').find({
+              tenantId: tenantObjectId,
+              employeeId: employeeObjectId,
+              month: periodMonth,
+              year: periodYear,
+              status: { $in: ['RECORDED', 'APPROVED'] },
+            }).toArray(),
+            db.collection('rewards').find({
+              tenantId: tenantObjectId,
+              employeeId: employeeObjectId,
+              month: periodMonth,
+              year: periodYear,
+              status: { $in: ['APPROVED', 'PENDING'] },
+            }).toArray(),
+          ]);
+
+          const totalWorkMinutes = attendanceRows.reduce((sum, row) => sum + (Number(row.workDuration) || 0), 0);
+          const totalOvertimeMinutes = attendanceRows.reduce((sum, row) => sum + (Number(row.overtimeDuration) || 0), 0);
+
+          lateIncidents = attendanceRows
+            .filter((row) => row.status === 'LATE')
+            .map((row) => ({
+              date: row.date,
+              lateMinutes: row.clockIn?.lateMinutes || 0,
+              status: 'LATE',
+            }))
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+          absentIncidents = attendanceRows
+            .filter((row) => row.status === 'ABSENT')
+            .map((row) => ({ date: row.date, status: 'ABSENT' }))
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+          const lateCount = lateIncidents.length;
+          const absentCount = absentIncidents.length;
+          const attendanceDays = attendanceRows.filter((row) => Number(row.workDuration || 0) > 0).length;
+
+          const standardHours = effectiveFormula.standardWorkingDays * 8;
+          const hourlyRate = standardHours > 0 ? baseSalaryByPosition / standardHours : 0;
+          const shiftSalary = effectiveFormula.standardWorkingDays > 0
+            ? baseSalaryByPosition / effectiveFormula.standardWorkingDays
+            : 0;
+
+          const overtimePay = roundMoney(
+            (totalOvertimeMinutes / 60) * hourlyRate * effectiveFormula.overtimeMultiplier
+          );
+
+          const disciplineAmount = roundMoney(
+            disciplineRows
+              .filter((d) => d.status === 'APPROVED' && d.amount != null)
+              .reduce((sum, d) => sum + Number(d.amount), 0)
+          );
+
+          disciplineBreakdown = disciplineRows
+            .filter((d) => d.status === 'APPROVED')
+            .map((d) => ({
+              type: d.type,
+              description: d.description,
+              amount: Number(d.amount) || 0,
+            }));
+
+          const approvedRewardRows = rewardRows.filter((r) => r.status === 'APPROVED');
+          const pendingRewardRows = rewardRows.filter((r) => r.status === 'PENDING');
+          const rewardAmount = roundMoney(
+            approvedRewardRows.reduce((sum, r) => sum + Number(r.amount || 0), 0)
+          );
+
+          rewardBreakdown = {
+            approved: approvedRewardRows.map((r) => ({
+              title: r.title,
+              type: r.type,
+              amount: Number(r.amount || 0),
+              itemName: r.itemName || null,
+            })),
+            pending: pendingRewardRows.map((r) => ({
+              title: r.title,
+              type: r.type,
+              amount: Number(r.amount || 0),
+              itemName: r.itemName || null,
+            })),
+          };
+
+          const bhxh = roundMoney(baseSalaryByPosition * effectiveFormula.bhxhRate);
+          const pit = roundMoney(baseSalaryByPosition * effectiveFormula.pitRate);
+
+          const autoAllowances = normalizePayrollItems([
+            ...(overtimePay > 0 ? [{ name: 'Tang ca', amount: overtimePay }] : []),
+            ...(rewardAmount > 0 ? [{ name: 'Thuong', amount: rewardAmount }] : []),
+          ]);
+
+          const autoDeductions = normalizePayrollItems([
+            ...(lateCount > 0 ? [{ name: `Di muon (${lateCount} lan)`, amount: roundMoney(lateCount * effectiveFormula.latePenaltyPerLate) }] : []),
+            ...(absentCount > 0 ? [{ name: `Vang khong phep (${absentCount} ngay)`, amount: roundMoney(absentCount * shiftSalary) }] : []),
+            ...(disciplineAmount > 0 ? [{ name: `Phat ky luat (${disciplineBreakdown.length} loi)`, amount: disciplineAmount }] : []),
+            ...(bhxh > 0 ? [{ name: `BHXH (${effectiveFormula.bhxhRate * 100}%)`, amount: bhxh }] : []),
+            ...(pit > 0 ? [{ name: `Thue TNCN (${effectiveFormula.pitRate * 100}%)`, amount: pit }] : []),
+          ]);
+
+          calculatedAllowances = [...autoAllowances, ...manualAllowances];
+          calculatedDeductions = [...autoDeductions, ...manualDeductions];
+
+          attendanceSummary = {
+            totalWorkMinutes,
+            totalOvertimeMinutes,
+            lateCount,
+            absentCount,
+            attendanceDays,
+            standardWorkingDays: effectiveFormula.standardWorkingDays,
+          };
+        }
+
+        const allowancesTotal = sumAmount(calculatedAllowances);
+        const deductionsTotal = sumAmount(calculatedDeductions);
 
         const doc = {
           tenantId: tenantObjectId,
           employeeId: employeeObjectId,
           period: { month: periodMonth, year: periodYear },
           baseSalary: baseSalaryByPosition,
-          allowances,
-          deductions,
+          allowances: calculatedAllowances,
+          deductions: calculatedDeductions,
           allowancesTotal,
           deductionsTotal,
-          netSalary: baseSalaryByPosition + allowancesTotal - deductionsTotal,
-          status,
+          netSalary: roundMoney(baseSalaryByPosition + allowancesTotal - deductionsTotal),
+          status: nextStatus,
           approvedAt: now,
+          attendanceSummary,
+          lateIncidents,
+          absentIncidents,
+          disciplineBreakdown,
+          rewardBreakdown,
+          autoCalculated: !!autoCalculate,
+          autoCalculatedAt: autoCalculate ? now : null,
           createdAt: now,
           createdBy: new ObjectId(userId),
           revisionOf: null,
@@ -623,6 +852,7 @@ router.post('/bulk', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (
           updatedAt: now,
           updatedBy: new ObjectId(userId),
         };
+
         const r = await db.collection('payrolls').insertOne(doc);
         await db.collection('payroll_audits').insertOne({
           tenantId: tenantObjectId,
@@ -630,7 +860,7 @@ router.post('/bulk', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (
           action: 'CREATE',
           performedBy: new ObjectId(userId),
           performedAt: now,
-          reason: null,
+          reason: autoCalculate ? 'Auto calculated in bulk creation' : null,
           previousValues: null,
           nextValues: {
             employeeId: employeeObjectId,
@@ -639,8 +869,10 @@ router.post('/bulk', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (
             allowances: doc.allowances,
             deductions: doc.deductions,
             status: doc.status,
+            autoCalculated: !!autoCalculate,
           },
         });
+
         results.created.push({ employeeId: employeeIdStr, id: r.insertedId.toString() });
       } catch (err) {
         results.failed.push({ employeeId: employeeIdStr, reason: err.message || 'Unknown' });
@@ -651,7 +883,7 @@ router.post('/bulk', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (
     res.status(finalStatus).json({
       success: results.created.length > 0,
       data: results,
-      message: `Tạo thành công ${results.created.length}/${employeeIds.length} phiếu lương`,
+      message: `Tao thanh cong ${results.created.length}/${employeeIds.length} phieu luong`,
     });
   } catch (error) {
     next(error);
@@ -660,7 +892,7 @@ router.post('/bulk', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (
 
 /**
  * PUT /api/payrolls/:id
- * Chỉ cho phép sửa trực tiếp khi status hiện tại là DRAFT/PENDING
+ * Chỉ cho phép sửa trực tiếp khi status hiện tại là PENDING (hoặc DRAFT cũ)
  */
 router.put('/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
   try {
@@ -692,7 +924,7 @@ router.put('/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (re
     if (!['DRAFT', 'PENDING'].includes(payroll.status)) {
       return res.status(400).json({
         success: false,
-        message: 'Only DRAFT/PENDING payroll can be edited directly',
+        message: 'Only PENDING payroll (or legacy DRAFT) can be edited directly',
       });
     }
 
@@ -704,7 +936,10 @@ router.put('/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (re
     const nextBase = baseSalary !== undefined ? normalizeMoney(baseSalary) : normalizeMoney(payroll.baseSalary);
     const nextAllowances = Array.isArray(allowances) ? allowances : (payroll.allowances || []);
     const nextDeductions = Array.isArray(deductions) ? deductions : (payroll.deductions || []);
-    const nextStatus = status || payroll.status;
+    const nextStatus = normalizeWriteablePayrollStatus(
+      status ?? payroll.status,
+      normalizeWriteablePayrollStatus(payroll.status, 'PENDING')
+    );
 
     const allowancesTotal = sumAmount(nextAllowances);
     const deductionsTotal = sumAmount(nextDeductions);
@@ -809,6 +1044,7 @@ router.post('/:id/revise', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), a
       month: parseInt(period?.month ?? payroll.period?.month, 10),
       year: parseInt(period?.year ?? payroll.period?.year, 10),
     };
+    const nextStatus = normalizeWriteablePayrollStatus(status, 'PENDING');
 
     const nextBase = baseSalary !== undefined ? normalizeMoney(baseSalary) : normalizeMoney(payroll.baseSalary);
     const nextAllowances = Array.isArray(allowances) ? allowances : (payroll.allowances || []);
@@ -831,7 +1067,7 @@ router.post('/:id/revise', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), a
           allowancesTotal,
           deductionsTotal,
           netSalary,
-          status,
+          status: nextStatus,
           approvedAt: approvedAt ? new Date(approvedAt) : now,
           revisedAt: now,
           revisedBy: new ObjectId(userId),
@@ -861,7 +1097,7 @@ router.post('/:id/revise', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), a
         baseSalary: nextBase,
         allowances: nextAllowances,
         deductions: nextDeductions,
-        status,
+        status: nextStatus,
       },
     });
 
@@ -904,3 +1140,4 @@ router.delete('/bulk-delete', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN)
 });
 
 export default router;
+

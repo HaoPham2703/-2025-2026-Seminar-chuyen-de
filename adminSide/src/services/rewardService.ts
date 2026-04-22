@@ -219,7 +219,7 @@ export async function runAutoReward(month?: number, year?: number): Promise<{
     totalQualified: number
     records: { id: string; employeeId: string; employeeName: string; earnedDays: number }[]
   }>(url)
-  if (!response.success) throw new Error(response.message || 'Failed to run auto reward')
+  if (!response.success || !response.data) throw new Error(response.message || 'Failed to run auto reward')
   return response.data
 }
 

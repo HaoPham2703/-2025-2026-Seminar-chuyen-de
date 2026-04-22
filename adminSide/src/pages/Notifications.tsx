@@ -52,8 +52,6 @@ const TYPE_ICON: Record<string, React.ReactNode> = {
 export default function Notifications() {
   const { language } = useLanguage()
   const [activeTab, setActiveTab] = useState<'compose' | 'history'>('compose')
-  const [showCompose, setShowCompose] = useState(false)
-  const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
@@ -70,7 +68,6 @@ export default function Notifications() {
   // History
   const [history, setHistory] = useState<any[]>([])
   const [historyPage, setHistoryPage] = useState(1)
-  const [historyTotal, setHistoryTotal] = useState(0)
   const [historyTotalPages, setHistoryTotalPages] = useState(0)
   const [loadingHistory, setLoadingHistory] = useState(false)
 
@@ -89,7 +86,6 @@ export default function Notifications() {
       const data = await adminService.getSentNotifications(page)
       setHistory(data.notifications || [])
       setHistoryPage(data.pagination.page)
-      setHistoryTotal(data.pagination.total)
       setHistoryTotalPages(data.pagination.totalPages)
     } catch (err: any) {
       console.error('Load history error:', err)
@@ -171,7 +167,6 @@ export default function Notifications() {
         : `${targetEmployeeIds.length} nhân viên`
 
       setSuccessMsg(`Đã gửi thông báo đến ${count}`)
-      setShowCompose(false)
       resetForm()
       setActiveTab('history')
       loadHistory(1)
@@ -298,7 +293,7 @@ export default function Notifications() {
                 {language === 'vi' ? 'Soạn thông báo mới' : 'Compose New Notification'}
               </h2>
               <button
-                onClick={() => { setShowCompose(true); resetForm() }}
+                onClick={() => resetForm()}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors cursor-pointer"
               >
                 <Send size={13} />

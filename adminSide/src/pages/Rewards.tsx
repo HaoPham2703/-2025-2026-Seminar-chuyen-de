@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useLanguage } from '../contexts/LanguageContext'
 import { adminService, type Employee } from '../services/adminService'
 import {
     createDiscipline,
@@ -18,6 +17,7 @@ import {
     updateRewardStatus,
     type Discipline,
     type DisciplineType,
+    type AutoCalcPreview,
     type Reward,
     type RewardRule,
     type RewardType,
@@ -25,10 +25,8 @@ import {
 import { t } from '../utils/i18n'
 
 const MONTHS_VI = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12']
-const MONTHS_EN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 export default function Rewards() {
-  const { language } = useLanguage()
   const [activeTab, setActiveTab] = useState<'rewards' | 'discipline' | 'settings'>('rewards')
 
   // ─── Shared State ─────────────────────────────────────────────────────────
@@ -38,7 +36,6 @@ export default function Rewards() {
   const [filterEmployee, setFilterEmployee] = useState('')
   const [employeeSearch, setEmployeeSearch] = useState('')
   const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false)
-  const months = language === 'vi' ? MONTHS_VI : MONTHS_EN
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i)
   const employeeDropdownRef = useRef<HTMLDivElement>(null)
 
@@ -82,9 +79,8 @@ export default function Rewards() {
 
   // ─── Settings State ────────────────────────────────────────────────────────
   const [rule, setRule] = useState<RewardRule | null>(null)
-  const [loadingRule, setLoadingRule] = useState(false)
   const [savingRule, setSavingRule] = useState(false)
-  const [preview, setPreview] = useState<ReturnType<typeof getAutoCalcPreview> | null>(null)
+  const [preview, setPreview] = useState<AutoCalcPreview | null>(null)
   const [loadingPreview, setLoadingPreview] = useState(false)
   const [runningAuto, setRunningAuto] = useState(false)
   const [autoResult, setAutoResult] = useState<string>('')
@@ -153,7 +149,6 @@ export default function Rewards() {
   // ─── Load Rule + Preview ───────────────────────────────────────────────────
   const loadRuleAndPreview = async () => {
     try {
-      setLoadingRule(true)
       const r = await getRewardRule()
       setRule(r)
       if (r) {
@@ -173,7 +168,6 @@ export default function Rewards() {
       const p = await getAutoCalcPreview(filterMonth, filterYear)
       setPreview(p)
     } catch { setRule(null) } finally {
-      setLoadingRule(false)
       setLoadingPreview(false)
     }
   }

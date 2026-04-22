@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
-import { adminService, type Employee, type LeaveRequest } from '../services/adminService'
+import { adminService } from '../services/adminService'
 import { t } from '../utils/i18n'
-import { useLanguage } from '../contexts/LanguageContext'
 
 interface ReportStats {
   totalEmployees: number
@@ -25,11 +24,56 @@ interface ReportStats {
   inactiveEmployees: number
 }
 
+type AttendanceStatus = 'PRESENT' | 'LATE' | 'ABSENT' | 'UNKNOWN'
+
+const toDateKey = (value: any): string => {
+  if (!value) return ''
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().split('T')[0]
+  }
+  if (typeof value === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value
+    const parsed = new Date(value)
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString().split('T')[0]
+    }
+    return value.slice(0, 10)
+  }
+  if (typeof value === 'object' && value.$date) {
+    return toDateKey(value.$date)
+  }
+  return ''
+}
+
+const toSortTimestamp = (record: any): number => {
+  const candidates = [
+    record?.updatedAt,
+    record?.clockOut?.time,
+    record?.clockIn?.time,
+    record?.createdAt,
+    record?.date,
+  ]
+
+  for (const value of candidates) {
+    const parsed = new Date(value)
+    if (!Number.isNaN(parsed.getTime())) return parsed.getTime()
+  }
+  return 0
+}
+
+const getAttendanceStatus = (record: any): AttendanceStatus => {
+  const rawStatus = typeof record?.status === 'string' ? record.status.toUpperCase() : ''
+  if (rawStatus === 'LATE') return 'LATE'
+  if (rawStatus === 'PRESENT') return 'PRESENT'
+  if (rawStatus === 'ABSENT') return 'ABSENT'
+  if (record?.clockIn?.isLate) return 'LATE'
+  if (record?.clockIn) return 'PRESENT'
+  return 'UNKNOWN'
+}
+
 export default function Reports() {
   const [stats, setStats] = useState<ReportStats | null>(null)
   const [attendanceRecords, setAttendanceRecords] = useState<any[]>([])
-  const [employees, setEmployees] = useState<Employee[]>([])
-  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [dateRange, setDateRange] = useState({
@@ -38,8 +82,6 @@ export default function Reports() {
       .split('T')[0],
     end: new Date().toISOString().split('T')[0],
   })
-  const { language } = useLanguage()
-
   useEffect(() => {
     loadReports()
   }, [dateRange])
@@ -53,9 +95,6 @@ export default function Reports() {
         adminService.getAllEmployees(),
         adminService.getAllLeaveRequests(),
       ])
-
-      setEmployees(employeesData.employees || [])
-      setLeaveRequests(leaveRequestsData.requests || [])
 
       // Attendance: fetch each day in range
       const allRecords: any[] = []
@@ -71,16 +110,38 @@ export default function Reports() {
         }
         current.setDate(current.getDate() + 1)
       }
-      setAttendanceRecords(allRecords)
+      const dedupedAttendanceMap = new Map<string, any>()
+      allRecords.forEach((record: any, index: number) => {
+        const employeeKey = record?.employeeId ? String(record.employeeId) : ''
+        const recordDate =
+          toDateKey(record?.date) ||
+          toDateKey(record?.clockIn?.time) ||
+          toDateKey(record?.clockOut?.time)
+        const fallbackKey = String(record?._id || `${recordDate || 'unknown'}-${index}`)
+        const dedupeKey = employeeKey && recordDate ? `${employeeKey}-${recordDate}` : fallbackKey
 
-      // Attendance stats
-      const presentCount = allRecords.filter(
-        (r: any) => r.status === 'PRESENT' || r.clockIn
+        const existing = dedupedAttendanceMap.get(dedupeKey)
+        if (!existing || toSortTimestamp(record) >= toSortTimestamp(existing)) {
+          dedupedAttendanceMap.set(dedupeKey, record)
+        }
+      })
+
+      const dedupedRecords = Array.from(dedupedAttendanceMap.values()).sort(
+        (a, b) => toSortTimestamp(b) - toSortTimestamp(a)
+      )
+      setAttendanceRecords(dedupedRecords)
+
+      // Attendance stats: normalize status to avoid double counting
+      const presentCount = dedupedRecords.filter(
+        (r: any) => getAttendanceStatus(r) === 'PRESENT'
       ).length
-      const absentCount = allRecords.filter(
-        (r: any) => r.status === 'ABSENT' || (!r.clockIn && r.employeeId)
+      const absentCount = dedupedRecords.filter(
+        (r: any) => getAttendanceStatus(r) === 'ABSENT'
       ).length
-      const lateCount = allRecords.filter((r: any) => r.status === 'LATE').length
+      const lateCount = dedupedRecords.filter(
+        (r: any) => getAttendanceStatus(r) === 'LATE'
+      ).length
+      const totalAttendance = presentCount + lateCount + absentCount
 
       // Department breakdown
       const deptMap = new Map<string, number>()
@@ -101,7 +162,7 @@ export default function Reports() {
         totalEmployees: employeesData.total,
         activeEmployees,
         inactiveEmployees: employeesData.total - activeEmployees,
-        totalAttendance: allRecords.length,
+        totalAttendance,
         presentCount,
         absentCount,
         lateCount,
@@ -152,12 +213,9 @@ export default function Reports() {
   if (!stats) return null
 
   const attendanceRate =
-    stats.totalEmployees > 0
-      ? ((stats.presentCount / stats.totalAttendance) * 100).toFixed(1)
+    stats.totalAttendance > 0
+      ? (((stats.presentCount + stats.lateCount) / stats.totalAttendance) * 100).toFixed(1)
       : '0'
-
-  const fmt = (n: number) =>
-    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n)
 
   return (
     <div className="space-y-6">
@@ -345,34 +403,48 @@ export default function Reports() {
                 </tr>
               </thead>
               <tbody>
-                {attendanceRecords.slice(0, 20).map((r: any, i: number) => (
-                  <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                    <td className="py-2 px-3 text-gray-700">{r.date || r.clockIn?.time?.split('T')[0] || '—'}</td>
-                    <td className="py-2 px-3 text-gray-500">{r.employeeId || '—'}</td>
-                    <td className="py-2 px-3 font-medium text-gray-900">{r.name || r.employeeName || '—'}</td>
-                    <td className="py-2 px-3 text-gray-700">
-                      {r.clockIn?.time
-                        ? new Date(r.clockIn.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-                        : '—'}
-                    </td>
-                    <td className="py-2 px-3 text-gray-700">
-                      {r.clockOut?.time
-                        ? new Date(r.clockOut.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-                        : '—'}
-                    </td>
-                    <td className="py-2 px-3">
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        r.status === 'PRESENT' || r.clockIn
-                          ? 'bg-green-100 text-green-700'
-                          : r.status === 'LATE'
-                          ? 'bg-yellow-100 text-yellow-700'
-                          : 'bg-red-100 text-red-700'
-                      }`}>
-                        {r.status === 'PRESENT' || r.clockIn ? 'Có mặt' : r.status === 'LATE' ? 'Muộn' : 'Vắng'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {attendanceRecords.slice(0, 20).map((r: any, i: number) => {
+                  const status = getAttendanceStatus(r)
+                  const statusColorClass =
+                    status === 'PRESENT'
+                      ? 'bg-green-100 text-green-700'
+                      : status === 'LATE'
+                      ? 'bg-yellow-100 text-yellow-700'
+                      : status === 'ABSENT'
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-gray-100 text-gray-700'
+                  const statusLabel =
+                    status === 'PRESENT'
+                      ? 'Có mặt'
+                      : status === 'LATE'
+                      ? 'Muộn'
+                      : status === 'ABSENT'
+                      ? 'Vắng'
+                      : 'Không rõ'
+
+                  return (
+                    <tr key={r._id || i} className="border-b border-gray-50 hover:bg-gray-50">
+                      <td className="py-2 px-3 text-gray-700">{r.date || r.clockIn?.time?.split('T')[0] || '—'}</td>
+                      <td className="py-2 px-3 text-gray-500">{r.employeeId || '—'}</td>
+                      <td className="py-2 px-3 font-medium text-gray-900">{r.name || r.employeeName || '—'}</td>
+                      <td className="py-2 px-3 text-gray-700">
+                        {r.clockIn?.time
+                          ? new Date(r.clockIn.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+                          : '—'}
+                      </td>
+                      <td className="py-2 px-3 text-gray-700">
+                        {r.clockOut?.time
+                          ? new Date(r.clockOut.time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+                          : '—'}
+                      </td>
+                      <td className="py-2 px-3">
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColorClass}`}>
+                          {statusLabel}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
             {attendanceRecords.length > 20 && (

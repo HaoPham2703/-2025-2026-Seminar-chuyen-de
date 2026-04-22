@@ -6,7 +6,7 @@ interface AttendanceItem {
   _id?: string
   name: string
   department: string
-  status: 'Absent' | 'Sick' | 'WFH' | 'Present'
+  status: string
   time?: string
 }
 
@@ -17,7 +17,7 @@ interface AttendanceReportCardProps {
   wfh?: AttendanceItem[]
 }
 
-const statusColors = {
+const statusColors: Record<string, string> = {
   Absent: 'bg-gray-100 text-gray-700',
   Sick: 'bg-orange-100 text-orange-700',
   WFH: 'bg-blue-100 text-blue-700',
@@ -64,7 +64,7 @@ export default function AttendanceReportCard({
                   <p className="text-sm font-medium text-gray-900">{employee.name}</p>
                   <p className="text-xs text-gray-500">{employee.department}</p>
                 </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[employee.status]}`}>
+                <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[employee.status] || 'bg-gray-100 text-gray-700'}`}>
                   {employee.status === 'Absent' ? t('status.absent') :
                    employee.status === 'Sick' ? t('status.sick') :
                    employee.status === 'WFH' ? t('status.wfh') :
@@ -90,7 +90,7 @@ export default function AttendanceReportCard({
                   <p className="text-sm font-medium text-gray-900">{employee.name}</p>
                   <p className="text-xs text-gray-500">{employee.department}</p>
                 </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[employee.status]}`}>
+                <span className={`px-3 py-1 rounded-full text-xs font-medium ${statusColors[employee.status] || 'bg-gray-100 text-gray-700'}`}>
                   {employee.time}
                 </span>
               </div>

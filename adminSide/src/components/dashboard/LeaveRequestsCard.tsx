@@ -9,7 +9,7 @@ interface LeaveRequest {
   role: string
   type: string
   dateRange: string
-  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'Pending' | 'Approved'
+  status: string
 }
 
 interface LeaveRequestsCardProps {

@@ -4,7 +4,6 @@ import {
     getDepartmentEmployees,
     getDepartments,
     type Department,
-    type DepartmentEmployee,
 } from '../services/departmentService'
 import {
     autoCalculatePayroll,
@@ -45,13 +44,21 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 type ModalMode = 'create' | 'edit' | 'revise' | 'bulkCreate'
+type BulkDepartmentEmployee = {
+  id: string
+  name: string
+  code: string
+  position: string
+  email: string
+  department: string
+}
 
 export default function Payroll() {
   const { language } = useLanguage()
   const [payrolls, setPayrolls] = useState<Payroll[]>([])
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
-  const [departmentEmployees, setDepartmentEmployees] = useState<DepartmentEmployee[]>([])
+  const [departmentEmployees, setDepartmentEmployees] = useState<BulkDepartmentEmployee[]>([])
   const [selectedDepartment, setSelectedDepartment] = useState('')
   const [loadingDepartments, setLoadingDepartments] = useState(false)
   const [loadingDepartmentEmployees, setLoadingDepartmentEmployees] = useState(false)
@@ -77,7 +84,7 @@ export default function Payroll() {
   const [formBaseSalary, setFormBaseSalary] = useState('')
   const [formAllowances, setFormAllowances] = useState([{ name: '', amount: '' }])
   const [formDeductions, setFormDeductions] = useState([{ name: '', amount: '' }])
-  const [formStatus, setFormStatus] = useState<'DRAFT' | 'PENDING' | 'APPROVED'>('APPROVED')
+  const [formStatus, setFormStatus] = useState<'PENDING' | 'APPROVED'>('PENDING')
   const [formReason, setFormReason] = useState('')
   const [autoCalcSummary, setAutoCalcSummary] = useState<{
     totalWorkMinutes: number
@@ -98,7 +105,7 @@ export default function Payroll() {
     lateIncidents?: { date: string; lateMinutes: number }[]
     absentIncidents?: { date: string }[]
     disciplineBreakdown?: { type: string; description: string; amount: number }[]
-    rewardBreakdown?: { approved: { title: string; type: string; amount: number; itemName: string | null }[]; pending: { title: string; type: string; amount: number; itemName: string | null }[] }
+    rewardBreakdown: { approved: { title: string; type: string; amount: number; itemName: string | null }[]; pending: { title: string; type: string; amount: number; itemName: string | null }[] }
   } | null>(null)
   const [autoCalculating, setAutoCalculating] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -168,7 +175,7 @@ export default function Payroll() {
   }, [modalMode])
 
   const modalSubtitle = useMemo(() => {
-    if (modalMode === 'edit') return 'Chỉ áp dụng cho phiếu DRAFT/PENDING'
+    if (modalMode === 'edit') return 'Chỉ áp dụng cho phiếu PENDING (hoặc DRAFT cũ)'
     if (modalMode === 'revise') return 'Tạo phiên bản mới và lưu audit log'
     if (modalMode === 'bulkCreate') return 'Tạo phiếu lương cho nhiều nhân viên cùng lúc'
     return t('payroll.createSubtitle') || 'Điền thông tin bên dưới'
@@ -249,7 +256,7 @@ export default function Payroll() {
     setFormBaseSalary('')
     setFormAllowances([{ name: '', amount: '' }])
     setFormDeductions([{ name: '', amount: '' }])
-    setFormStatus('APPROVED')
+    setFormStatus('PENDING')
     setFormReason('')
     setAutoCalcSummary(null)
     setSelectedPayroll(null)
@@ -267,7 +274,7 @@ export default function Payroll() {
   const openBulkCreateModal = () => {
     resetForm()
     setModalMode('bulkCreate')
-    setFormStatus('DRAFT')
+    setFormStatus('PENDING')
     setFormEmployee('')
     setSelectedDepartment('')
     setBulkSelectedEmployees([])
@@ -277,7 +284,7 @@ export default function Payroll() {
 
   const openEditModal = (payroll: Payroll) => {
     if (!['DRAFT', 'PENDING'].includes(payroll.status)) {
-      alert('Chỉ được sửa trực tiếp phiếu DRAFT/PENDING')
+      alert('Chỉ được sửa trực tiếp phiếu PENDING (hoặc DRAFT cũ)')
       return
     }
 
@@ -297,7 +304,7 @@ export default function Payroll() {
         ? payroll.deductions.map((d) => ({ name: d.name || '', amount: String(d.amount ?? '') }))
         : [{ name: '', amount: '' }]
     )
-    setFormStatus(payroll.status)
+    setFormStatus(payroll.status === 'APPROVED' ? 'APPROVED' : 'PENDING')
     setFormReason('')
     setShowModal(true)
   }
@@ -529,6 +536,7 @@ export default function Payroll() {
         allowances,
         deductions,
         status: formStatus,
+        autoCalculate: true,
       })
 
       setShowModal(false)
@@ -694,7 +702,7 @@ export default function Payroll() {
               >
                 <option value="">-- {t('common.all') || 'Tất cả'} --</option>
                 <option value="PENDING">{t('payroll.pending') || 'Chờ duyệt'}</option>
-                <option value="DRAFT">{t('payroll.draft') || 'Nháp'}</option>
+                <option value="APPROVED">{t('payroll.approved') || 'Đã duyệt'}</option>
               </select>
             </div>
           </div>
@@ -1052,12 +1060,11 @@ export default function Payroll() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">{t('payroll.status') || 'Trạng thái'}</label>
                 <select
                   value={formStatus}
-                  onChange={(e) => setFormStatus(e.target.value as 'DRAFT' | 'PENDING' | 'APPROVED')}
+                  onChange={(e) => setFormStatus(e.target.value as 'PENDING' | 'APPROVED')}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="APPROVED">{t('payroll.approved') || 'Đã duyệt'}</option>
                   <option value="PENDING">{t('payroll.pending') || 'Chờ duyệt'}</option>
-                  <option value="DRAFT">{t('payroll.draft') || 'Nháp'}</option>
+                  <option value="APPROVED">{t('payroll.approved') || 'Đã duyệt'}</option>
                 </select>
               </div>
 

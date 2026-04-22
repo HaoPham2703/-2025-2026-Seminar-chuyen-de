@@ -38,11 +38,11 @@ export const notificationService = {
   },
 
   async markAsRead(notificationId: string): Promise<void> {
-    await api.patch(`/notifications/${notificationId}/read`)
+    await api.put(`/notifications/${notificationId}/read`)
   },
 
   async markAllAsRead(): Promise<void> {
-    await api.patch('/notifications/read-all')
+    await api.put('/notifications/read-all')
   },
 
   async delete(notificationId: string): Promise<void> {

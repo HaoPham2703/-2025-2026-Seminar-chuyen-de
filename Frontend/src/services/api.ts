@@ -55,6 +55,14 @@ const TOKEN_KEY = '@dacn_auth_token';
 const AUTH_UNAUTHORIZED_EVENT = 'auth:unauthorized';
 let hasEmittedUnauthorized = false;
 
+function isPublicAuthEndpoint(endpoint: string): boolean {
+  return (
+    endpoint.startsWith('/auth/login') ||
+    endpoint.startsWith('/auth/signup') ||
+    endpoint.startsWith('/auth/refresh-token')
+  );
+}
+
 /**
  * Get auth token from storage (AsyncStorage)
  */
@@ -107,6 +115,7 @@ async function apiFetch<T = any>(
   retryCount = 0
 ): Promise<ApiResponse<T>> {
   const token = await getAuthToken();
+  const isAuthPublic = isPublicAuthEndpoint(endpoint);
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -132,8 +141,9 @@ async function apiFetch<T = any>(
       message: `HTTP ${response.status}: ${response.statusText}`,
     }));
 
-    // Token expired → thử refresh token rồi retry 1 lần
-    if (response.status === 401 && retryCount === 0) {
+    // Chỉ thử refresh khi đang có token và endpoint không phải public auth.
+    // Tránh trường hợp chưa login nhưng lại báo "Token expired".
+    if (response.status === 401 && retryCount === 0 && !!token && !isAuthPublic) {
       console.log('Token expired, attempting refresh...');
       const refreshed = await refreshToken();
       if (refreshed) {
@@ -154,10 +164,13 @@ async function apiFetch<T = any>(
       console.error('API Error Response:', { status: response.status, message: errorMessage, data });
 
       if (response.status === 401) {
-        await removeAuthToken();
-        if (!hasEmittedUnauthorized) {
-          hasEmittedUnauthorized = true;
-          DeviceEventEmitter.emit(AUTH_UNAUTHORIZED_EVENT);
+        // Public auth endpoint trả 401 (vd sai mật khẩu) thì không đụng token global.
+        if (!isAuthPublic) {
+          await removeAuthToken();
+          if (!hasEmittedUnauthorized) {
+            hasEmittedUnauthorized = true;
+            DeviceEventEmitter.emit(AUTH_UNAUTHORIZED_EVENT);
+          }
         }
       }
 

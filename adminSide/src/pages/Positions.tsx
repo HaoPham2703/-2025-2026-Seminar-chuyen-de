@@ -221,10 +221,6 @@ export default function Positions() {
     setEmpModal({ show: false, position: null, employees: [], loading: false })
   }
 
-  const getDeptName = (deptId: string) => {
-    return departments.find(d => d._id === deptId)?.name || 'N/A'
-  }
-
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('vi-VN', {
       style: 'currency',

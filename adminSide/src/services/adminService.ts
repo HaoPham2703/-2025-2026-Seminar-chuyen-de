@@ -52,6 +52,17 @@ export interface Employee {
   department: string
   position: string
   phone: string
+  dateOfBirth?: string
+  gender?: string
+  street?: string
+  city?: string
+  province?: string
+  baseSalary?: number
+  status?: string
+  hireDate?: string
+  totalWorkingDays?: number
+  lateCount?: number
+  onTimeRate?: number
 }
 
 export interface LeaveRequest {
@@ -197,6 +208,7 @@ export const adminService = {
     position?: string
     positionId?: string
     phone?: string
+    baseSalary?: number
   }): Promise<void> {
     await api.put(`/admin/employees/${id}`, payload)
   },

@@ -244,12 +244,23 @@ router.get('/employees', async (req, res, next) => {
 
     const formattedEmployees = employees.map(emp => ({
       _id: emp._id.toString(),
-      employeeId: emp.employeeId,
+      employeeId: emp.employeeId || '',
       name: `${emp.personalInfo?.firstName || ''} ${emp.personalInfo?.lastName || ''}`.trim(),
       email: emp.personalInfo?.email || '',
       department: emp.department || emp.employment?.department || 'N/A',
       position: emp.position || emp.employment?.position || 'N/A',
-      phone: emp.personalInfo?.phone || ''
+      phone: emp.personalInfo?.phone || '',
+      dateOfBirth: emp.personalInfo?.dateOfBirth ? new Date(emp.personalInfo.dateOfBirth).toISOString().split('T')[0] : '',
+      gender: emp.personalInfo?.gender || '',
+      street: emp.personalInfo?.address?.street || '',
+      city: emp.personalInfo?.address?.city || '',
+      province: emp.personalInfo?.address?.province || '',
+      baseSalary: Number(emp.baseSalary ?? emp.employment?.baseSalary ?? 0),
+      status: emp.employment?.status || 'ACTIVE',
+      hireDate: emp.employment?.hireDate ? new Date(emp.employment.hireDate).toISOString().split('T')[0] : '',
+      totalWorkingDays: Number(emp.statistics?.totalWorkingDays || 0),
+      lateCount: Number(emp.statistics?.lateCount || 0),
+      onTimeRate: Number(emp.statistics?.onTimeRate || 0),
     }));
 
     res.json({
@@ -449,18 +460,41 @@ router.post('/employees', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), as
 /**
  * PUT /api/admin/employees/:id
  * Cập nhật thông tin nhân viên
- * Body: { name?, email?, position?, phone? }
+ * Body: {
+ *   name?, email?, phone?,
+ *   department?, departmentId?,
+ *   position?, positionId?,
+ *   baseSalary?
+ * }
  */
 router.put('/employees/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN), async (req, res, next) => {
   try {
     const { tenantId } = req.user;
     const { id } = req.params;
-    const { name, email, position, phone } = req.body;
+    const {
+      name,
+      email,
+      position,
+      phone,
+      department,
+      departmentId,
+      positionId,
+      baseSalary,
+    } = req.body;
     const db = getDatabase();
     const tenantObjectId = new ObjectId(tenantId);
 
     // Check if at least one field is provided
-    if (!name && !email && !position && !phone) {
+    if (
+      name === undefined &&
+      email === undefined &&
+      position === undefined &&
+      phone === undefined &&
+      department === undefined &&
+      departmentId === undefined &&
+      positionId === undefined &&
+      baseSalary === undefined
+    ) {
       return res.status(400).json({ success: false, message: 'At least one field is required' });
     }
 
@@ -490,6 +524,47 @@ router.put('/employees/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN),
       updatedAt: new Date(),
     };
 
+    let resolvedDepartmentName;
+    let resolvedPositionName;
+    let resolvedSalaryFromPosition;
+
+    if (departmentId) {
+      if (!ObjectId.isValid(departmentId)) {
+        return res.status(400).json({ success: false, message: 'Invalid departmentId' });
+      }
+      const dept = await db.collection('departments').findOne({
+        _id: new ObjectId(departmentId),
+        tenantId: tenantObjectId,
+      });
+      if (!dept) {
+        return res.status(404).json({ success: false, message: 'Department not found' });
+      }
+      resolvedDepartmentName = dept.name || '';
+    }
+
+    if (positionId) {
+      if (!ObjectId.isValid(positionId)) {
+        return res.status(400).json({ success: false, message: 'Invalid positionId' });
+      }
+      const pos = await db.collection('positions').findOne({
+        _id: new ObjectId(positionId),
+        tenantId: tenantObjectId,
+      });
+      if (!pos) {
+        return res.status(404).json({ success: false, message: 'Position not found' });
+      }
+      resolvedPositionName = pos.name || '';
+      resolvedSalaryFromPosition = parseMoneyInput(pos.baseSalary);
+
+      if (resolvedDepartmentName === undefined && pos.departmentId) {
+        const dept = await db.collection('departments').findOne({
+          _id: pos.departmentId,
+          tenantId: tenantObjectId,
+        });
+        if (dept) resolvedDepartmentName = dept.name || '';
+      }
+    }
+
     if (name && name.trim()) {
       const nameParts = name.trim().split(' ');
       update['personalInfo.firstName'] = nameParts[0];
@@ -500,13 +575,35 @@ router.put('/employees/:id', requireRole(ROLES.TENANT_ADMIN, ROLES.SUPER_ADMIN),
       update['personalInfo.email'] = email.trim().toLowerCase();
     }
 
-    if (position !== undefined) {
-      update['position'] = position?.trim() || '';
-      update['employment.position'] = position?.trim() || '';
+    if (department !== undefined) {
+      resolvedDepartmentName = department?.trim() || '';
     }
 
     if (phone !== undefined) {
       update['personalInfo.phone'] = phone?.trim() || '';
+    }
+
+    if (position !== undefined) {
+      resolvedPositionName = position?.trim() || '';
+    }
+
+    if (resolvedDepartmentName !== undefined) {
+      update.department = resolvedDepartmentName;
+      update['employment.department'] = resolvedDepartmentName;
+    }
+
+    if (resolvedPositionName !== undefined) {
+      update.position = resolvedPositionName;
+      update['employment.position'] = resolvedPositionName;
+    }
+
+    if (baseSalary !== undefined) {
+      const parsedSalary = parseMoneyInput(baseSalary);
+      update.baseSalary = parsedSalary;
+      update['employment.baseSalary'] = parsedSalary;
+    } else if (resolvedSalaryFromPosition !== undefined) {
+      update.baseSalary = resolvedSalaryFromPosition;
+      update['employment.baseSalary'] = resolvedSalaryFromPosition;
     }
 
     await db.collection('employees').updateOne(

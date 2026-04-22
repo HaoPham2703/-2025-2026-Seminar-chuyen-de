@@ -48,7 +48,7 @@ export interface CreatePayrollRequest {
   baseSalary: number
   allowances?: PayrollItem[]
   deductions?: PayrollItem[]
-  status?: 'DRAFT' | 'PENDING' | 'APPROVED'
+  status?: 'PENDING' | 'APPROVED'
 }
 
 export interface UpdatePayrollRequest {
@@ -56,7 +56,7 @@ export interface UpdatePayrollRequest {
   baseSalary?: number
   allowances?: PayrollItem[]
   deductions?: PayrollItem[]
-  status?: 'DRAFT' | 'PENDING' | 'APPROVED'
+  status?: 'PENDING' | 'APPROVED'
   reason?: string
 }
 
@@ -65,7 +65,7 @@ export interface RevisePayrollRequest {
   baseSalary?: number
   allowances?: PayrollItem[]
   deductions?: PayrollItem[]
-  status?: 'DRAFT' | 'PENDING' | 'APPROVED'
+  status?: 'PENDING' | 'APPROVED'
   reason: string
 }
 
@@ -201,7 +201,7 @@ export async function autoCalculatePayroll(data: AutoCalcPayrollRequest): Promis
 }
 
 export async function deletePayroll(id: string): Promise<void> {
-  const response = await api.delete<null>(`/payrolls/${id}`)
+  const response = await api.delete<null>('/payrolls/bulk-delete', { ids: [id] })
   if (!response.success) {
     throw new Error(response.message || 'Failed to delete payroll')
   }
@@ -225,7 +225,8 @@ export async function createBulkPayroll(data: {
   period: PayrollPeriod
   allowances?: PayrollItem[]
   deductions?: PayrollItem[]
-  status?: 'DRAFT' | 'PENDING' | 'APPROVED'
+  status?: 'PENDING' | 'APPROVED'
+  autoCalculate?: boolean
 }): Promise<BulkPayrollResult> {
   const raw = await api.post('/payrolls/bulk', data) as { success: boolean; message?: string; data?: { created?: { employeeId: string; id: string }[]; failed?: { employeeId: string; reason: string }[] } }
   if (!raw.success && !raw.data?.created?.length) {
