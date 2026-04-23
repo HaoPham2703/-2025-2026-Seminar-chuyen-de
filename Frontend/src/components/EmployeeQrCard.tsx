@@ -1,5 +1,5 @@
 import { X } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Modal,
   StyleSheet,
@@ -9,12 +9,14 @@ import {
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 
-const QR_REFRESH_INTERVAL_SEC = 10;
-
 interface EmployeeQrCardProps {
   visible: boolean;
   onClose: () => void;
   qrValue: string | null;
+  employeeName?: string;
+  employeeCode?: string;
+  employeeId?: string;
+  onAttendanceSuccess?: () => void | Promise<void>;
 }
 
 export default function EmployeeQrCard({
@@ -23,52 +25,17 @@ export default function EmployeeQrCard({
   qrValue,
 }: EmployeeQrCardProps) {
   const [currentQr, setCurrentQr] = useState<string | null>(qrValue);
-  const [nextQr, setNextQr] = useState<string | null>(null);
-
-  const nextQrRef = useRef<string | null>(null);
-  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastSwapAtRef = useRef<number>(Date.now());
-
-  useEffect(() => { nextQrRef.current = nextQr; }, [nextQr]);
 
   useEffect(() => {
-    if (qrValue) setCurrentQr(qrValue);
+    if (qrValue) {
+      setCurrentQr(qrValue);
+    }
   }, [qrValue]);
 
-  const swapQr = () => {
-    const qrToShow = nextQrRef.current;
-    setCurrentQr(qrToShow);
-    setNextQr(null);
-    lastSwapAtRef.current = Date.now();
-  };
-
-  const stopTimers = () => {
-    if (countdownIntervalRef.current) {
-      clearInterval(countdownIntervalRef.current);
-      countdownIntervalRef.current = null;
-    }
-  };
-
   useEffect(() => {
-    if (!visible) {
-      stopTimers();
-      return;
-    }
-
-    lastSwapAtRef.current = Date.now();
+    if (!visible) return;
     if (qrValue) setCurrentQr(qrValue);
-
-    countdownIntervalRef.current = setInterval(() => {
-      const elapsedSec = Math.floor((Date.now() - lastSwapAtRef.current) / 1000);
-      const remaining = Math.max(QR_REFRESH_INTERVAL_SEC - elapsedSec, 0);
-
-      if (remaining <= 0) {
-        swapQr();
-      }
-    }, 1000);
-
-    return stopTimers;
-  }, [visible]);
+  }, [visible, qrValue]);
 
   return (
     <Modal

@@ -222,31 +222,34 @@ const Index = () => {
     return clockInHour > 9 || (clockInHour === 9 && clockInMinute > 0);
   };
 
+  const refreshQr = useCallback(async () => {
+    if (!employeeId) return;
+    try {
+      const qrResponse = await getEmployeeQrCode(employeeId);
+      if (qrResponse?.qrToken) {
+        setQrCode(qrResponse.qrToken);
+      }
+      if (typeof qrResponse?.expiresIn === "number") {
+        setQrExpiresIn(qrResponse.expiresIn);
+        setQrCountdown(qrResponse.expiresIn);
+      }
+    } catch {
+      // ignore
+    }
+  }, [employeeId]);
+
   useEffect(() => {
     if (!employeeId) return;
 
-    const refreshQr = async () => {
-      try {
-        const qrResponse = await getEmployeeQrCode(employeeId);
-        if (qrResponse?.qrToken) {
-          setQrCode(qrResponse.qrToken);
-        }
-        if (typeof qrResponse?.expiresIn === "number") {
-          setQrExpiresIn(qrResponse.expiresIn);
-          setQrCountdown(qrResponse.expiresIn);
-        }
-      } catch {
-        // ignore
-      }
-    };
-
     refreshQr();
 
-    const intervalMs = Math.max((qrExpiresIn ?? 60) * 1000, 30000);
+    // Refresh QR token before it expires.
+    const expiresSec = Math.max(qrExpiresIn ?? 10, 5);
+    const intervalMs = Math.max((expiresSec - 1) * 1000, 3000);
     const interval = setInterval(refreshQr, intervalMs);
 
     return () => clearInterval(interval);
-  }, [employeeId, qrExpiresIn]);
+  }, [employeeId, qrExpiresIn, refreshQr]);
 
   useEffect(() => {
     if (qrCountdown === null) return;
@@ -263,6 +266,11 @@ const Index = () => {
 
     return () => clearInterval(timer);
   }, [qrCountdown, qrExpiresIn]);
+
+  useEffect(() => {
+    if (!showQrModal) return;
+    refreshQr();
+  }, [showQrModal, refreshQr]);
 
   const handleClockAction = async () => {
     if (isClockedIn) {
@@ -484,4 +492,3 @@ const styles = StyleSheet.create({
 });
 
 export default Index;
-

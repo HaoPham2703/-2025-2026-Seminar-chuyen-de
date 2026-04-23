@@ -5,7 +5,7 @@ import { useSettings } from "@/src/contexts/SettingsContext";
 import { useTheme } from "@/src/hooks/use-theme";
 import { getAuthToken } from "@/src/services/api";
 import { logout } from "@/src/services/authService";
-import { EmployeeProfileResponse, getEmployeeProfile } from "@/src/services/employeeService";
+import { EmployeeProfileResponse, getEmployeeProfile, getEmployeeQrCode } from "@/src/services/employeeService";
 import { useRouter } from "expo-router";
 import {
   Award,
@@ -112,6 +112,7 @@ const Profile = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
+  const [liveQrValue, setLiveQrValue] = useState<string | null>(null);
 
   useEffect(() => {
     loadProfileData();
@@ -214,6 +215,39 @@ const Profile = () => {
       ]
     );
   };
+
+  useEffect(() => {
+    if (!profileData) return;
+    setLiveQrValue(profileData.employee.qrToken || profileData.employee.qrCode?.code || null);
+  }, [profileData]);
+
+  useEffect(() => {
+    if (!showQrModal || !profileData?.employee?.id) return;
+
+    let cancelled = false;
+
+    const refreshQr = async () => {
+      try {
+        const qrResponse = await getEmployeeQrCode(profileData.employee.id);
+        if (cancelled) return;
+        if (qrResponse?.qrToken) {
+          setLiveQrValue(qrResponse.qrToken);
+        } else if (qrResponse?.code) {
+          setLiveQrValue(qrResponse.code);
+        }
+      } catch {
+        // keep existing QR to avoid blank state
+      }
+    };
+
+    refreshQr();
+    const interval = setInterval(refreshQr, 9000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [showQrModal, profileData?.employee?.id]);
 
   if (loading) {
     return (
@@ -407,7 +441,7 @@ const Profile = () => {
       <EmployeeQrCard
         visible={showQrModal}
         onClose={() => setShowQrModal(false)}
-        qrValue={profileData.employee.qrToken || profileData.employee.qrCode?.code || null}
+        qrValue={liveQrValue}
         employeeName={fullName}
         employeeCode={employeeId}
         employeeId={profileData.employee.id}

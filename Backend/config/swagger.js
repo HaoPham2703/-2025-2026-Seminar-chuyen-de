@@ -1,4 +1,5 @@
 import swaggerJsdoc from 'swagger-jsdoc';
+import { groupedSwaggerPaths, groupedSwaggerTags } from './swagger-groups.js';
 
 const options = {
   definition: {
@@ -17,6 +18,7 @@ const options = {
         description: 'Development server',
       },
     ],
+    tags: groupedSwaggerTags,
     components: {
       securitySchemes: {
         bearerAuth: {
@@ -111,6 +113,7 @@ const options = {
         bearerAuth: [],
       },
     ],
+    paths: groupedSwaggerPaths,
   },
   apis: ['./routes/*.js'], // Path to the API routes
 };

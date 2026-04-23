@@ -1,193 +1,238 @@
-# DACN Mobile Client - Hướng dẫn chạy project
+# HRM Suite - Mobile + Admin + Backend
 
-## Cấu trúc Project
+Repository nay gom 3 phan chinh cho ung dung HRM:
+- `Frontend/`: Mobile app (Expo + React Native)
+- `adminSide/`: Admin dashboard (React + Vite + TypeScript)
+- `Backend/`: REST API (Node.js + Express + MongoDB)
 
-```
+## 1) Tong quan he thong
+
+Muc tieu cua project:
+- Quan ly nhan su, cham cong, nghi phep, payroll.
+- Ho tro su dung cho nhan vien tren mobile va admin tren web.
+- Dong bo du lieu qua API backend, co xac thuc JWT va tenant isolation.
+
+## 2) Cau truc thu muc
+
+```text
 codeZoneMobile/
-├── Frontend/     # React Native + Expo (Mobile App)
-├── Backend/      # Node.js + Express (API Server)
-└── ...
+|- Backend/                 # API server + scripts
+|- Frontend/                # Mobile app (Expo)
+|- adminSide/               # Admin dashboard
+|- run-dev.ps1              # Script mo nhanh 2 terminal (Backend + Frontend)
+|- QUICK-TEST.md            # Huong dan test nhanh
+|- CREATE-ADMIN-GUIDE.md    # Huong dan tao admin
 ```
 
-## Yêu cầu hệ thống
+## 3) Cong nghe su dung
 
-- **Node.js**: >= 18.x
-- **npm** hoặc **yarn**
-- **MongoDB**: Local hoặc MongoDB Atlas
-- **Expo CLI**: Sẽ được cài đặt tự động
+- Mobile: Expo, React Native, TypeScript
+- Admin Web: React, Vite, TypeScript, Tailwind
+- Backend: Node.js, Express, MongoDB, JWT
 
-## Bước 1: Setup Backend
+## 4) Yeu cau moi truong
 
-### 1.1. Cài đặt dependencies
+- Node.js `>=18`
+- npm
+- MongoDB (local hoac Atlas)
+
+## 5) Huong dan chay local
+
+### 5.1 Chay Backend
 
 ```bash
 cd Backend
 npm install
 ```
 
-### 1.2. Tạo file `.env`
-
-Tạo file `.env` trong folder `Backend/`:
+Tao file `Backend/.env` voi noi dung goi y:
 
 ```env
 PORT=3000
 NODE_ENV=development
 MONGODB_URI=mongodb://localhost:27017/DACN
-# Hoặc MongoDB Atlas:
-# MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/DACN?retryWrites=true&w=majority
-
-JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+JWT_SECRET=your-super-secret-jwt-key-change-this
 JWT_EXPIRES_IN=7d
 CORS_ORIGIN=http://localhost:8081
+
+# Optional (QR / geofence)
+QR_SECRET=your-qr-secret
+QR_WINDOW_SECONDS=10
+QR_MAX_SKEW_WINDOWS=2
+OFFICE_LAT=
+OFFICE_LNG=
+OFFICE_RADIUS_METERS=100
 ```
 
-### 1.3. Setup Database
-
-1. **Chạy MongoDB** (nếu dùng local):
-   ```bash
-   # Windows: Đảm bảo MongoDB service đang chạy
-   # Hoặc chạy: mongod
-   ```
-
-2. **Import seed data**:
-   ```bash
-   # Từ root project
-   mongosh < database-seed-mongosh-clean.js
-   ```
-
-3. **Tạo indexes** (tùy chọn):
-   ```bash
-   mongosh < scripts/create-indexes.js
-   ```
-
-### 1.4. Chạy Backend Server
+Chay server:
 
 ```bash
-cd Backend
-npm run dev    # Development mode (với auto-reload)
-# hoặc
-npm start      # Production mode
+npm run dev
 ```
 
-Server sẽ chạy tại: `http://localhost:3000`
+API mac dinh: `http://localhost:3000/api`
 
-**Kiểm tra server:**
-- Health check: `http://localhost:3000/health`
-- API base: `http://localhost:3000/api`
-
-## Bước 2: Setup Frontend
-
-### 2.1. Cài đặt dependencies
+### 5.2 Chay Mobile App (Frontend)
 
 ```bash
 cd Frontend
 npm install
 ```
 
-### 2.2. Cấu hình API URL (nếu cần)
-
-Tạo file `.env` trong folder `Frontend/` (nếu cần thay đổi API URL):
+Tao file `Frontend/.env`:
 
 ```env
-EXPO_PUBLIC_API_URL=http://localhost:3000/api
+# Neu chay tren dien thoai that: dung IP LAN may chay backend
+EXPO_PUBLIC_API_URL=http://192.168.1.10:3000/api
 ```
 
-**Lưu ý quan trọng (Clock In/Out hay bị fail do sai IP):**
-- **Điện thoại thật (Expo Go)**: phải dùng **LAN IP của máy chạy Backend** (ipconfig). Ví dụ của bạn:
-  - `EXPO_PUBLIC_API_URL=http://172.20.10.4:3000/api`
-- **Android Emulator**: nên dùng `http://10.0.2.2:3000/api` (app đã fallback tự động nếu không set env)
-- **Web**: dùng `http://localhost:3000/api`
-
-API base URL được resolve trong `Frontend/src/services/api.ts`.
-
-### 2.3. Chạy Frontend
+Chay app:
 
 ```bash
-cd Frontend
 npm start
 ```
 
-Sau đó chọn:
-- **a** - Android emulator
-- **i** - iOS simulator
-- **w** - Web browser
-- **r** - Reload app
+Lenh nhanh:
 
-**Hoặc chạy trực tiếp:**
 ```bash
-npm run android    # Android
-npm run ios        # iOS
-npm run web        # Web
+npm run android
+npm run ios
+npm run web
 ```
 
-## Bước 3: Chạy cả Frontend và Backend
+Luu y API URL:
+- Web: `http://localhost:3000/api`
+- Android Emulator: `http://10.0.2.2:3000/api`
+- Dien thoai that: dung IP LAN (vd `http://192.168.1.10:3000/api`)
 
-### Terminal 1 - Backend:
+### 5.3 Chay Admin Dashboard
+
 ```bash
-cd Backend
+cd adminSide
+npm install
+```
+
+Tao file `adminSide/.env`:
+
+```env
+VITE_API_URL=http://localhost:3000/api
+```
+
+Chay dashboard:
+
+```bash
 npm run dev
 ```
 
-### Terminal 2 - Frontend:
+Build production:
+
 ```bash
-cd Frontend
-npm start
+npm run build
 ```
 
-## API Endpoints
+## 6) Chay nhanh bang script (Windows)
 
-### Authentication
-- `POST /api/auth/login` - Đăng nhập
-- `GET /api/auth/me` - Lấy thông tin user hiện tại
+Tu root project:
 
-### Attendance
-- `POST /api/attendance/clock-in` - Chấm công vào ca
-- `POST /api/attendance/clock-out` - Chấm công ra ca
-- `GET /api/attendance/current?employeeId=xxx` - Chấm công hôm nay
-- `GET /api/attendance/history?employeeId=xxx` - Lịch sử chấm công
+```powershell
+.\run-dev.ps1
+```
 
-### Employees
-- `GET /api/employees/profile` - Profile employee hiện tại
-- `GET /api/employees/:id` - Chi tiết employee
+Script se mo 2 terminal:
+- Backend (`Backend/`)
+- Frontend (`Frontend/`)
 
-## Test Account (từ seed data)
+## 7) Tai khoan admin de test
 
-**Tenant: Quán Cà Phê ABC**
-- Email: `admin@abccafe.com`
-- Password: (tạm thời skip password check trong development)
+Tao admin nhanh:
 
-- Email: `nhanvien1@abccafe.com`
-- Password: (tạm thời skip password check trong development)
-- Employee ID: `EMP-001`
+```bash
+cd Backend
+npm run create-admin
+```
 
-**Tenant: Công Ty XYZ**
-- Email: `admin@xyzcompany.com`
-- Password: (tạm thời skip password check trong development)
+Thong tin mac dinh:
+- Email: `admin@example.com`
+- Password: `admin123`
 
-## Troubleshooting
+Xem them: [CREATE-ADMIN-GUIDE.md](./CREATE-ADMIN-GUIDE.md)
 
-### Backend không kết nối được MongoDB
-- Kiểm tra MongoDB đang chạy
-- Kiểm tra `MONGODB_URI` trong `.env`
-- Kiểm tra firewall/network
+## 8) Checklist test nhanh
 
-### Frontend không kết nối được Backend
-- Kiểm tra Backend đang chạy tại port 3000
-- Kiểm tra `CORS_ORIGIN` trong Backend `.env`
-- Kiểm tra API URL trong `Frontend/src/services/api.ts`
+File tham khao:
+- [QUICK-TEST.md](./QUICK-TEST.md)
 
-### Port đã được sử dụng
-- Thay đổi `PORT` trong Backend `.env`
-- Hoặc kill process đang dùng port đó:
-  ```bash
-  # Windows
-  netstat -ano | findstr :3000
-  taskkill /PID <PID> /F
-  ```
+Co the chay script checklist admin:
 
-## Cấu trúc chi tiết
+```bash
+cd Backend
+node scripts/run-adminside-checklist.js
+```
 
-Xem thêm:
-- `Backend/README.md` - Chi tiết về Backend
-- `database-design.md` - Database design
-- `scratchpad.md` - Task tracking và lessons learned
+## 9) Hinh anh demo (Images_readme)
+
+Tat ca anh ben duoi duoc load truc tiep tu thu muc `Images_readme/`.
+
+### 9.1 Tong quan he thong
+![01-system-overview](./Images_readme/01-system-overview.png)
+
+### 9.2 Mobile App
+![02-mobile-login](./Images_readme/02-mobile-login.png)
+![03-mobile-home](./Images_readme/03-mobile-home.png)
+![04-mobile-checkin](./Images_readme/04-mobile-checkin.png)
+![05-mobile-checkout](./Images_readme/05-mobile-checkout.png)
+![06-attendance-ui](./Images_readme/06-Attendance%20UI.png)
+![06-mobile-leave-request](./Images_readme/06-mobile-leave-request.png)
+![07-mobile-notification](./Images_readme/07-mobile-notification.png)
+![08-mobile-payslip](./Images_readme/08-mobile-payslip.png)
+
+### 9.3 Admin Web
+![09-admin-login](./Images_readme/09-admin-login.png)
+![11-admin-employees](./Images_readme/11-admin-employees.png)
+![11-admin-employees-2](./Images_readme/11-admin-employees_2.png)
+![11-admin-employees-v3](./Images_readme/11-admin-employees_v3.png)
+![12-admin-attendance](./Images_readme/12-admin-attendance.png)
+![13-admin-leave-approval](./Images_readme/13-admin-leave-approval.png)
+![14-admin-payroll-bulk](./Images_readme/14-admin-payroll-bulk.png)
+![14-admin-payroll-bulk-2](./Images_readme/14-admin-payroll-bulk_2.png)
+![15-admin-payroll-detail](./Images_readme/15-admin-payroll-detail.png)
+![16-admin-reports](./Images_readme/16-admin-reports.png)
+![17-admin-settings-1](./Images_readme/17-admin-settings_1.png)
+![17-admin-settings-2](./Images_readme/17-admin-settings_2.png)
+
+### 9.4 API Docs
+![18-api-docs-1](./Images_readme/18-api-docs_1.png)
+![18-api-docs-2](./Images_readme/18-api-docs_2.png)
+![18-api-docs-3](./Images_readme/18-api-docs_3.png)
+
+## 10) Cap nhat gan day
+
+- Payroll bulk: da ho tro auto-tinh luong day du khi tao hang loat.
+- Payroll status: da uu tien luong duyet theo `PENDING/APPROVED` (co mapping du lieu cu).
+- Reports attendance: da sua logic thong ke de tranh dem chong va sai so.
+
+## 11) Troubleshooting nhanh
+
+### Mobile bao loi khong goi duoc API
+
+- Kiem tra backend dang chay port `3000`.
+- Kiem tra `EXPO_PUBLIC_API_URL` dung IP/port.
+- Neu dung dien thoai that, khong dung `localhost`.
+
+### Admin bi 401/Token issue
+
+- Kiem tra `VITE_API_URL`.
+- Dang xuat/dang nhap lai de cap nhat token.
+- Kiem tra backend co endpoint refresh token va dong bo JWT secret.
+
+### Backend khong ket noi MongoDB
+
+- Kiem tra `MONGODB_URI`.
+- Kiem tra service MongoDB dang chay.
+
+## 12) Tai lieu lien quan
+
+- [Backend README](./Backend/README.md)
+- [AdminSide README](./adminSide/README.md)
+- [Quick Test](./QUICK-TEST.md)
+- [Create Admin Guide](./CREATE-ADMIN-GUIDE.md)
